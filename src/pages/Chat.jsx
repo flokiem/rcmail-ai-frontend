@@ -39,6 +39,7 @@ export default function Chat() {
   const [accounts, setAccounts]         = useState([]);
   const [llmProviders, setLlmProviders] = useState([]);
   const [threads, setThreads]           = useState([]);
+  const [loading, setLoading]           = useState(true);
   const [messages, setMessages]         = useState([]);
   const [currentThreadId, setCurrentThreadId] = useState(null);
   const [selectedAccountId, setSelectedAccountId] = useState('');
@@ -108,20 +109,24 @@ export default function Chat() {
   }, [headerDropdown]);
 
   async function init() {
-    const meRes = await api.get('/api/auth/me');
-    if (!meRes.ok) { navigate('/', { replace: true }); return; }
-    const me = await meRes.json();
-    if (!me.hasMail || !me.hasLlm) { navigate('/setup', { replace: true }); return; }
-    setUserEmail(me.email ?? '');
-    const [accts, llms] = await Promise.all([
-      api.get('/api/accounts').then(r => r.json()),
-      api.get('/api/llm-providers').then(r => r.json()),
-    ]);
-    setAccounts(accts);
-    setLlmProviders(llms);
-    if (accts[0]) setSelectedAccountId(String(accts[0].id));
-    if (llms[0])  setSelectedLlmId(String(llms[0].id));
-    await loadThreads();
+    try {
+      const meRes = await api.get('/api/auth/me');
+      if (!meRes.ok) { navigate('/', { replace: true }); return; }
+      const me = await meRes.json();
+      if (!me.hasMail || !me.hasLlm) { navigate('/setup', { replace: true }); return; }
+      setUserEmail(me.email ?? '');
+      const [accts, llms] = await Promise.all([
+        api.get('/api/accounts').then(r => r.json()),
+        api.get('/api/llm-providers').then(r => r.json()),
+      ]);
+      setAccounts(accts);
+      setLlmProviders(llms);
+      if (accts[0]) setSelectedAccountId(String(accts[0].id));
+      if (llms[0])  setSelectedLlmId(String(llms[0].id));
+      await loadThreads();
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function loadThreads() {
@@ -409,21 +414,25 @@ export default function Chat() {
             <button className="sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close menu">×</button>
           </div>
           <div className="select-label">Default Account</div>
-          <div className="side-select">
-            <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)}>
-              {accounts.map(a => (
-                <option key={a.id} value={a.id}>{a.label} — {a.imap_user}</option>
-              ))}
-            </select>
-          </div>
+          {loading ? <div className="skeleton skel-select" /> : (
+            <div className="side-select">
+              <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)}>
+                {accounts.map(a => (
+                  <option key={a.id} value={a.id}>{a.label} — {a.imap_user}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="select-label">Default AI Provider</div>
-          <div className="side-select" style={{ marginBottom: 8 }}>
-            <select value={selectedLlmId} onChange={e => setSelectedLlmId(e.target.value)}>
-              {llmProviders.map(l => (
-                <option key={l.id} value={l.id}>{l.label} — {LLM_INFO[l.provider]?.label ?? l.provider}</option>
-              ))}
-            </select>
-          </div>
+          {loading ? <div className="skeleton skel-select" style={{ marginBottom: 8 }} /> : (
+            <div className="side-select" style={{ marginBottom: 8 }}>
+              <select value={selectedLlmId} onChange={e => setSelectedLlmId(e.target.value)}>
+                {llmProviders.map(l => (
+                  <option key={l.id} value={l.id}>{l.label} — {LLM_INFO[l.provider]?.label ?? l.provider}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <button className="btn-new-chat" onClick={newChat}>
             <svg viewBox="0 0 24 24" style={{ width:14, height:14, fill:'#fff', flexShrink:0 }}><path d="M19 3H5c-1.1 0-2 .9-2 2v14l4-4h12c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 10H7v-2h3v-3h2v3h3v2h-3v3h-2v-3z"/></svg>
             New Chat
@@ -435,10 +444,19 @@ export default function Chat() {
         </div>
 
         <div className="threads-list">
-          {threads.length === 0 && (
+          {loading ? (
+            <div className="thread-skeletons">
+              {[80, 65, 72, 58, 68].map((w, i) => (
+                <div key={i} className="skel-thread">
+                  <span className="skeleton skel-thread-dot" />
+                  <span className="skeleton skel-thread-bar" style={{ maxWidth: w + '%' }} />
+                </div>
+              ))}
+            </div>
+          ) : threads.length === 0 ? (
             <div style={{ padding:10, fontSize:11, color:'rgba(255,255,255,0.3)' }}>No chats yet</div>
-          )}
-          {threads.map((t) => {
+          ) : (
+            threads.map((t) => {
             const color = t.account_id ? getAcctColor(t.account_id) : '#94a3b8';
             const ai    = LLM_INFO[t.llm_provider] ?? {};
             const isConfirming = confirmDeleteThread === t.id;
@@ -458,7 +476,8 @@ export default function Chat() {
                 )}
               </div>
             );
-          })}
+          })
+          )}
         </div>
 
         <div className="sidebar-footer">

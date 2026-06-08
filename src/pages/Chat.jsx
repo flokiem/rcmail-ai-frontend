@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, clearToken, getToken, streamChat } from '../lib/api.js';
+import { api, clearToken, getToken, streamChat, aiCompose } from '../lib/api.js';
+import ModelPicker, { PROVIDER_MODELS } from '../lib/ModelPicker.jsx';
 
 const ACCOUNT_COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4'];
 const LLM_INFO = {
@@ -47,12 +48,26 @@ export default function Chat() {
   const [isTyping, setIsTyping]         = useState(false);
   const [msgInput, setMsgInput]         = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen]   = useState(false);
   const [settingsTab, setSettingsTab]   = useState('accounts');
   const [threadTitle, setThreadTitle]   = useState('Floki Mail');
 
   const [pendingEmail, setPendingEmail] = useState(null);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [sendEmailError, setSendEmailError] = useState('');
+
+  const [composeOpen, setComposeOpen]   = useState(false);
+  const [compose, setCompose]           = useState({ to:'', cc:'', subject:'', body:'' });
+  const [composeAccountId, setComposeAccountId] = useState('');
+  const [aiBusy, setAiBusy]             = useState('');       // which AI action is running
+  const [showWritePrompt, setShowWritePrompt] = useState(false);
+  const [writePrompt, setWritePrompt]   = useState('');
+  const [composeError, setComposeError] = useState('');
+  const [composeSending, setComposeSending] = useState(false);
+  const [tone, setTone]                 = useState('Professional');
+  const [prevBody, setPrevBody]         = useState(null);   // for Undo after AI edit
+  const [composeLlmId, setComposeLlmId] = useState('');     // per-email AI provider
+  const [composeModel, setComposeModel] = useState('');     // per-email model override ('' = provider default)
 
   const [showAddAcct, setShowAddAcct] = useState(false);
   const [showAddLlm,  setShowAddLlm]  = useState(false);
@@ -63,9 +78,14 @@ export default function Chat() {
   const [savingAcct, setSavingAcct] = useState(false);
   const [savingLlm,  setSavingLlm]  = useState(false);
 
-  const messagesRef = useRef(null);
-  const textareaRef = useRef(null);
-  const cancelStreamRef = useRef(null);
+  const [headerDropdown, setHeaderDropdown] = useState(null); // 'provider' | 'account' | 'model' | null
+  const [confirmDeleteThread, setConfirmDeleteThread] = useState(null);
+  const [modelInput, setModelInput] = useState('');
+
+  const messagesRef      = useRef(null);
+  const textareaRef      = useRef(null);
+  const cancelStreamRef  = useRef(null);
+  const headerActionsRef = useRef(null);
 
   useEffect(() => {
     if (!getToken()) { navigate('/', { replace: true }); return; }
@@ -75,6 +95,17 @@ export default function Chat() {
   useEffect(() => {
     if (messagesRef.current) messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
   }, [messages, isTyping]);
+
+  useEffect(() => {
+    if (!headerDropdown) return;
+    function handleOutsideClick(e) {
+      if (headerActionsRef.current && !headerActionsRef.current.contains(e.target)) {
+        setHeaderDropdown(null);
+      }
+    }
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [headerDropdown]);
 
   async function init() {
     const meRes = await api.get('/api/auth/me');
@@ -116,6 +147,7 @@ export default function Chat() {
     setThreadTitle('New Chat');
     setMessages([]);
     await loadThreads();
+    setSidebarOpen(false);
     textareaRef.current?.focus();
   }
 
@@ -128,11 +160,11 @@ export default function Chat() {
     setThreads(t2);
     const t = t2.find(x => x.id === id);
     if (t) setThreadTitle(t.title);
+    setSidebarOpen(false);
   }
 
-  async function deleteThread(e, id) {
-    e.stopPropagation();
-    if (!confirm('Delete this chat?')) return;
+  async function deleteThread(id) {
+    setConfirmDeleteThread(null);
     await api.del(`/api/threads/${id}`);
     if (currentThreadId === id) {
       setCurrentThreadId(null);
@@ -142,9 +174,44 @@ export default function Chat() {
     await loadThreads();
   }
 
-  async function sendMessage() {
+  async function switchThreadModel(llmId) {
+    setHeaderDropdown(null);
+    if (!currentThreadId) { setSelectedLlmId(String(llmId)); return; }
+    const r = await api.put(`/api/threads/${currentThreadId}`, { llmId: Number(llmId) });
+    if (!r.ok) return;
+    const provider = llmProviders.find(l => l.id === Number(llmId))?.provider;
+    setThreads(ts => ts.map(t => t.id === currentThreadId ? { ...t, llm_id: Number(llmId), llm_provider: provider } : t));
+  }
+
+  async function switchThreadAccount(accountId) {
+    setHeaderDropdown(null);
+    if (!currentThreadId) { setSelectedAccountId(String(accountId)); return; }
+    const r = await api.put(`/api/threads/${currentThreadId}`, { accountId: Number(accountId) });
+    if (!r.ok) return;
+    setThreads(ts => ts.map(t => t.id === currentThreadId ? { ...t, account_id: Number(accountId) } : t));
+  }
+
+  async function switchModelOverride(model) {
+    if (!currentThreadId) return;
+    const r = await api.put(`/api/threads/${currentThreadId}`, { model });
+    if (!r.ok) return;
+    setThreads(ts => ts.map(t => t.id === currentThreadId ? { ...t, model_override: model || null } : t));
+  }
+
+  function openModelDropdown() {
+    setModelInput(currentThread?.model_override ?? '');
+    setHeaderDropdown(d => d === 'model' ? null : 'model');
+  }
+
+  function stopStreaming() {
+    cancelStreamRef.current?.();
+    setIsTyping(false);
+    setSending(false);
+  }
+
+  async function sendMessage(overrideText) {
     if (sending) return;
-    const message = msgInput.trim();
+    const message = (overrideText !== undefined ? overrideText : msgInput).trim();
     if (!message) return;
 
     let threadId = currentThreadId;
@@ -188,51 +255,6 @@ export default function Chat() {
     });
   }
 
-  function useSuggestion(text) {
-    setMsgInput(text);
-    setTimeout(() => sendMessageWith(text), 0);
-  }
-
-  async function sendMessageWith(message) {
-    if (sending) return;
-    let threadId = currentThreadId;
-    if (!threadId) {
-      const accountId = Number(selectedAccountId);
-      const llmId     = Number(selectedLlmId);
-      if (!accountId || !llmId) return;
-      const r = await api.post('/api/threads', { accountId, llmId });
-      if (!r.ok) return;
-      const t = await r.json();
-      threadId = t.id;
-      setCurrentThreadId(t.id);
-      await loadThreads();
-    }
-    setSending(true);
-    setMsgInput('');
-    setMessages(m => [...m, { role: 'user', content: message }]);
-    setIsTyping(true);
-    setTypingTool('');
-
-    cancelStreamRef.current = streamChat(threadId, message, {
-      onTool: (name) => setTypingTool(TOOL_LABELS[name] ?? ('⚙️ ' + name.replace(/_/g, ' '))),
-      onSendPreview: (email) => setPendingEmail(email),
-      onDone: async ({ reply, title }) => {
-        setIsTyping(false);
-        setMessages(m => [...m, { role: 'assistant', content: reply }]);
-        if (title) {
-          setThreadTitle(title);
-          setThreads(ts => ts.map(t => t.id === threadId ? { ...t, title } : t));
-        }
-        setSending(false);
-      },
-      onError: (err) => {
-        setIsTyping(false);
-        setMessages(m => [...m, { role: 'assistant', content: '⚠️ ' + err }]);
-        setSending(false);
-      },
-    });
-  }
-
   async function sendEmailDirectly() {
     if (!pendingEmail) return;
     setSendingEmail(true); setSendEmailError('');
@@ -245,6 +267,69 @@ export default function Chat() {
       setPendingEmail(null);
     } catch { setSendEmailError('Network error. Please try again.'); }
     finally { setSendingEmail(false); }
+  }
+
+  const AI_BUSY_LABEL = { write: 'Writing…', proofread: 'Proofreading…', expand: 'Expanding…', shorten: 'Shortening…' };
+
+  function openCompose() {
+    setCompose({ to:'', cc:'', subject:'', body:'' });
+    setComposeAccountId(selectedAccountId || (accounts[0] ? String(accounts[0].id) : ''));
+    setComposeError(''); setShowWritePrompt(false); setWritePrompt(''); setAiBusy('');
+    setPrevBody(null);
+    setComposeLlmId(selectedLlmId || (llmProviders[0] ? String(llmProviders[0].id) : ''));
+    setComposeModel('');
+    setComposeOpen(true);
+    setSidebarOpen(false);
+  }
+
+  function undoAiEdit() {
+    if (prevBody === null) return;
+    setCompose(c => ({ ...c, body: prevBody }));
+    setPrevBody(null);
+  }
+
+  async function runAiAction(action) {
+    setComposeError('');
+    if (action === 'write') { setShowWritePrompt(s => !s); return; }
+    if (!compose.body.trim()) { setComposeError('Write something in the body first, or use "Write for me".'); return; }
+    setAiBusy(action);
+    const before = compose.body;
+    try {
+      const text = await aiCompose({ llmId: Number(composeLlmId) || undefined, model: composeModel, action, text: compose.body, tone });
+      setPrevBody(before);
+      setCompose(c => ({ ...c, body: text }));
+    } catch (e) { setComposeError(e.message); }
+    finally { setAiBusy(''); }
+  }
+
+  async function runWriteForMe() {
+    if (!writePrompt.trim() || aiBusy) return;
+    setAiBusy('write'); setComposeError('');
+    const before = compose.body;
+    try {
+      const text = await aiCompose({ llmId: Number(composeLlmId) || undefined, model: composeModel, action: 'write', text: compose.body, instruction: writePrompt, tone });
+      setPrevBody(before);
+      setCompose(c => ({ ...c, body: text }));
+      setShowWritePrompt(false); setWritePrompt('');
+    } catch (e) { setComposeError(e.message); }
+    finally { setAiBusy(''); }
+  }
+
+  async function sendComposed() {
+    if (!compose.to.trim() || !compose.subject.trim() || !compose.body.trim()) {
+      setComposeError('To, subject, and body are required.'); return;
+    }
+    if (!composeAccountId) { setComposeError('Select an account to send from.'); return; }
+    setComposeSending(true); setComposeError('');
+    try {
+      const r = await api.post(`/api/accounts/${composeAccountId}/send`, {
+        to: compose.to, cc: compose.cc || undefined, subject: compose.subject, body: compose.body,
+      });
+      const d = await r.json();
+      if (!r.ok) { setComposeError(d.error ?? 'Failed to send email.'); return; }
+      setComposeOpen(false);
+    } catch { setComposeError('Network error. Please try again.'); }
+    finally { setComposeSending(false); }
   }
 
   function logout() { clearToken(); navigate('/', { replace: true }); }
@@ -313,14 +398,17 @@ export default function Chat() {
 
   return (
     <div className="chat-root">
+      {/* Mobile drawer backdrop */}
+      <div className={`sidebar-backdrop ${sidebarOpen ? 'show' : ''}`} onClick={() => setSidebarOpen(false)} />
       {/* Sidebar */}
-      <aside className="sidebar">
+      <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <div className="sidebar-logo">
             <img src="/flokilogo.PNG" alt="Floki" />
             <span>Floki Mail</span>
+            <button className="sidebar-close" onClick={() => setSidebarOpen(false)} aria-label="Close menu">×</button>
           </div>
-          <div className="select-label">Mail Account</div>
+          <div className="select-label">Default Account</div>
           <div className="side-select">
             <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)}>
               {accounts.map(a => (
@@ -328,7 +416,7 @@ export default function Chat() {
               ))}
             </select>
           </div>
-          <div className="select-label">AI Provider</div>
+          <div className="select-label">Default AI Provider</div>
           <div className="side-select" style={{ marginBottom: 8 }}>
             <select value={selectedLlmId} onChange={e => setSelectedLlmId(e.target.value)}>
               {llmProviders.map(l => (
@@ -340,21 +428,34 @@ export default function Chat() {
             <svg viewBox="0 0 24 24" style={{ width:14, height:14, fill:'#fff', flexShrink:0 }}><path d="M19 3H5c-1.1 0-2 .9-2 2v14l4-4h12c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 10H7v-2h3v-3h2v3h3v2h-3v3h-2v-3z"/></svg>
             New Chat
           </button>
+          <button className="btn-compose" onClick={openCompose} style={{ marginTop: 8 }}>
+            <svg viewBox="0 0 24 24" style={{ width:14, height:14, fill:'currentColor', flexShrink:0 }}><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+            Compose Email
+          </button>
         </div>
 
         <div className="threads-list">
           {threads.length === 0 && (
             <div style={{ padding:10, fontSize:11, color:'rgba(255,255,255,0.3)' }}>No chats yet</div>
           )}
-          {threads.map((t, i) => {
+          {threads.map((t) => {
             const color = t.account_id ? getAcctColor(t.account_id) : '#94a3b8';
             const ai    = LLM_INFO[t.llm_provider] ?? {};
+            const isConfirming = confirmDeleteThread === t.id;
             return (
-              <div key={t.id} className={`thread-item ${t.id === currentThreadId ? 'active' : ''}`} onClick={() => loadThread(t.id)}>
+              <div key={t.id} className={`thread-item ${t.id === currentThreadId ? 'active' : ''}`} onClick={() => !isConfirming && loadThread(t.id)}>
                 <span className="thread-dot" style={{ background: color }} />
                 <span className="thread-title">{t.title}</span>
-                {ai.badge && <span className={`thread-ai-badge ${ai.cls ?? ''}`}>{ai.badge}</span>}
-                <button className="thread-delete" onClick={e => deleteThread(e, t.id)}>×</button>
+                {!isConfirming && ai.badge && <span className={`thread-ai-badge ${ai.cls ?? ''}`}>{ai.badge}</span>}
+                {isConfirming ? (
+                  <div className="thread-confirm" onClick={e => e.stopPropagation()}>
+                    <span style={{ fontSize:10, color:'rgba(255,255,255,0.55)', whiteSpace:'nowrap' }}>Delete?</span>
+                    <button className="thread-confirm-yes" onClick={() => deleteThread(t.id)}>Yes</button>
+                    <button className="thread-confirm-no" onClick={() => setConfirmDeleteThread(null)}>No</button>
+                  </div>
+                ) : (
+                  <button className="thread-delete" onClick={e => { e.stopPropagation(); setConfirmDeleteThread(t.id); }}>×</button>
+                )}
               </div>
             );
           })}
@@ -363,7 +464,7 @@ export default function Chat() {
         <div className="sidebar-footer">
           <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:130 }}>{userEmail}</span>
           <div style={{ display:'flex', gap:9, flexShrink:0 }}>
-            <button onClick={() => setSettingsOpen(true)}>Settings</button>
+            <button onClick={() => { setSettingsOpen(true); setSidebarOpen(false); }}>Settings</button>
             <button onClick={logout}>Logout</button>
           </div>
         </div>
@@ -372,15 +473,128 @@ export default function Chat() {
       {/* Main */}
       <div className="main">
         <div className="main-header">
+          <button className="menu-toggle" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+            <svg viewBox="0 0 24 24"><path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/></svg>
+          </button>
           <h2>{threadTitle}</h2>
-          <div className="header-actions">
-            {currentAcct && (
-              <span className="user-chip" style={{ background: getAcctColor(currentThread?.account_id) + '22', color: getAcctColor(currentThread?.account_id), fontWeight: 600 }}>
-                {currentAcct.label}
-              </span>
-            )}
-            {currentLlm && (
-              <span className={`user-chip ${LLM_INFO[currentLlm.provider]?.cls ?? ''}`}>{currentLlm.label}</span>
+          <div className="header-actions" ref={headerActionsRef}>
+            {currentThread && (
+              <>
+                {/* Account switcher */}
+                <div className="header-chip-wrap">
+                  <span
+                    className="user-chip header-chip-btn"
+                    style={{ background: getAcctColor(currentThread.account_id) + '22', color: getAcctColor(currentThread.account_id), fontWeight: 600 }}
+                    onClick={() => setHeaderDropdown(d => d === 'account' ? null : 'account')}
+                    title="Switch mail account for this chat"
+                  >
+                    {currentAcct?.label ?? 'Account'}
+                    <svg viewBox="0 0 10 6" style={{ width:8, height:8, marginLeft:4, fill:'currentColor', opacity:0.65 }}><path d="M0 0l5 6 5-6z"/></svg>
+                  </span>
+                  {headerDropdown === 'account' && (
+                    <div className="header-dropdown">
+                      <div className="header-dropdown-label">Switch Account</div>
+                      {accounts.map((a, i) => (
+                        <div
+                          key={a.id}
+                          className={`header-dropdown-item ${a.id === currentThread.account_id ? 'selected' : ''}`}
+                          onClick={() => switchThreadAccount(a.id)}
+                        >
+                          <span className="hdi-dot" style={{ background: acctColor(i) }} />
+                          <span>{a.label}</span>
+                          {a.id === currentThread.account_id && <span className="hdi-check">✓</span>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* AI provider switcher */}
+                <div className="header-chip-wrap">
+                  <span
+                    className={`user-chip header-chip-btn ${LLM_INFO[currentLlm?.provider]?.cls ?? ''}`}
+                    onClick={() => setHeaderDropdown(d => d === 'provider' ? null : 'provider')}
+                    title="Switch AI provider for this chat"
+                  >
+                    {currentLlm?.label ?? 'AI'}
+                    <svg viewBox="0 0 10 6" style={{ width:8, height:8, marginLeft:4, fill:'currentColor', opacity:0.65 }}><path d="M0 0l5 6 5-6z"/></svg>
+                  </span>
+                  {headerDropdown === 'provider' && (
+                    <div className="header-dropdown">
+                      <div className="header-dropdown-label">Switch AI Provider</div>
+                      {llmProviders.map(l => {
+                        const info = LLM_INFO[l.provider] ?? { label: l.provider, badge: '?', cls: '' };
+                        return (
+                          <div
+                            key={l.id}
+                            className={`header-dropdown-item ${l.id === currentThread.llm_id ? 'selected' : ''}`}
+                            onClick={() => switchThreadModel(l.id)}
+                          >
+                            <span className={`hdi-badge ${info.cls}`}>{info.badge}</span>
+                            <span>{l.label}</span>
+                            <span style={{ fontSize:10, color:'var(--muted)', marginLeft:'auto', paddingLeft:8 }}>{info.label}</span>
+                            {l.id === currentThread.llm_id && <span className="hdi-check">✓</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Model override switcher */}
+                {currentLlm && (() => {
+                  const activeModel = currentThread.model_override || currentLlm.model || '';
+                  const knownModel  = PROVIDER_MODELS[currentLlm.provider]?.find(m => m.id === activeModel);
+                  const modelLabel  = knownModel ? knownModel.name : (activeModel || 'Default model');
+                  return (
+                    <div className="header-chip-wrap">
+                      <span
+                        className="user-chip header-chip-btn"
+                        style={{ color: 'var(--muted)', background: activeModel ? '#f1f5f9' : 'var(--gray)', fontStyle: activeModel ? 'normal' : 'italic' }}
+                        onClick={openModelDropdown}
+                        title="Switch model for this chat"
+                      >
+                        {modelLabel}
+                        <svg viewBox="0 0 10 6" style={{ width:8, height:8, marginLeft:4, fill:'currentColor', opacity:0.65 }}><path d="M0 0l5 6 5-6z"/></svg>
+                      </span>
+                      {headerDropdown === 'model' && (
+                        <div className="header-dropdown header-dropdown-wide">
+                          <div className="header-dropdown-label">Switch Model</div>
+                          <div style={{ padding:'0 10px 6px' }}>
+                            <ModelPicker
+                              provider={currentLlm.provider}
+                              value={modelInput}
+                              onChange={v => { setModelInput(v); switchModelOverride(v); setHeaderDropdown(null); }}
+                            />
+                            <div style={{ display:'flex', gap:6, marginTop:8 }}>
+                              <input
+                                className="model-custom-input"
+                                type="text"
+                                placeholder="Custom model ID…"
+                                value={modelInput}
+                                onChange={e => setModelInput(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') { switchModelOverride(modelInput); setHeaderDropdown(null); } }}
+                                autoFocus
+                              />
+                              <button
+                                className="btn btn-primary btn-sm"
+                                style={{ flexShrink:0 }}
+                                onClick={() => { switchModelOverride(modelInput); setHeaderDropdown(null); }}
+                              >Apply</button>
+                            </div>
+                            {activeModel && (
+                              <button
+                                className="model-reset-btn"
+                                onClick={() => { switchModelOverride(''); setHeaderDropdown(null); }}
+                              >Reset to default</button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </>
             )}
           </div>
         </div>
@@ -393,7 +607,7 @@ export default function Chat() {
               <p>Ask me to read your emails, search for messages, send a reply, or manage your inbox.</p>
               <div className="suggestions">
                 {['Show my unread emails','Search for emails from my boss','How many unread emails do I have?','List my email folders'].map(s => (
-                  <div key={s} className="suggestion" onClick={() => useSuggestion(s)}>{s}</div>
+                  <div key={s} className="suggestion" onClick={() => sendMessage(s)}>{s}</div>
                 ))}
               </div>
             </div>
@@ -435,14 +649,151 @@ export default function Chat() {
               onChange={e => setMsgInput(e.target.value)}
               onKeyDown={handleKeyDown}
               onInput={autoResize}
+              disabled={sending}
             />
-            <button className="btn-send" disabled={sending} onClick={sendMessage}>
-              <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-            </button>
+            {sending ? (
+              <button className="btn-stop" onClick={stopStreaming} title="Stop generating">
+                <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+              </button>
+            ) : (
+              <button className="btn-send" disabled={!msgInput.trim()} onClick={() => sendMessage()}>
+                <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              </button>
+            )}
           </div>
           <div className="input-hint">Enter to send · Shift+Enter for new line</div>
         </div>
       </div>
+
+      {/* Compose Modal */}
+      {composeOpen && (
+        <div className="modal-overlay open" onClick={e => { if (e.target.classList.contains('modal-overlay')) setComposeOpen(false); }}>
+          <div className="settings-panel" style={{ width: 600 }}>
+            <div className="settings-head">
+              <h3>✉️ Compose Email</h3>
+              <button className="settings-close" onClick={() => setComposeOpen(false)}>×</button>
+            </div>
+            <div className="settings-body" style={{ padding: '18px 22px 22px' }}>
+              <div className="field">
+                <label>From</label>
+                <select value={composeAccountId} onChange={e => setComposeAccountId(e.target.value)}>
+                  {accounts.map(a => <option key={a.id} value={a.id}>{a.label} — {a.imap_user}</option>)}
+                </select>
+              </div>
+              <div className="field">
+                <label>To</label>
+                <input type="text" placeholder="recipient@example.com" value={compose.to} onChange={e => setCompose(c => ({ ...c, to: e.target.value }))} />
+              </div>
+              <div className="field">
+                <label>CC <span className="hint">optional</span></label>
+                <input type="text" placeholder="optional" value={compose.cc} onChange={e => setCompose(c => ({ ...c, cc: e.target.value }))} />
+              </div>
+              <div className="field">
+                <label>Subject</label>
+                <input type="text" value={compose.subject} onChange={e => setCompose(c => ({ ...c, subject: e.target.value }))} />
+              </div>
+
+              {/* AI assistant panel */}
+              <div className="ai-panel">
+                <div className="ai-panel-head">
+                  <span className="ai-panel-title"><span className="ai-panel-spark">✦</span> AI Assistant</span>
+                  {prevBody !== null && !aiBusy && (
+                    <button className="ai-undo-btn" onClick={undoAiEdit} title="Restore text from before the last AI edit">
+                      <span className="ai-tool-icon">↶</span> Undo
+                    </button>
+                  )}
+                </div>
+                <div className="ai-controls">
+                  {(() => {
+                    const cp = llmProviders.find(l => String(l.id) === String(composeLlmId));
+                    const models = PROVIDER_MODELS[cp?.provider] ?? [];
+                    return (
+                      <>
+                        <select className="ai-ctrl-select" value={composeLlmId} onChange={e => { setComposeLlmId(e.target.value); setComposeModel(''); }} disabled={!!aiBusy} title="AI provider for this email">
+                          {llmProviders.map(l => <option key={l.id} value={l.id}>{l.label} — {LLM_INFO[l.provider]?.label ?? l.provider}</option>)}
+                        </select>
+                        {models.length > 0 && (
+                          <select className="ai-ctrl-select" value={composeModel} onChange={e => setComposeModel(e.target.value)} disabled={!!aiBusy} title="Model for this email">
+                            <option value="">Default model</option>
+                            {models.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                          </select>
+                        )}
+                      </>
+                    );
+                  })()}
+                  <select className="ai-ctrl-select" value={tone} onChange={e => setTone(e.target.value)} disabled={!!aiBusy} title="Tone for AI writing">
+                    {['Professional','Friendly','Casual','Formal'].map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </div>
+                <div className="ai-toolbar">
+                  {[
+                    { id:'write',     label:'Write for me', icon:'✨' },
+                    { id:'proofread', label:'Proofread',    icon:'✓'  },
+                    { id:'expand',    label:'Expand',       icon:'↔'  },
+                    { id:'shorten',   label:'Shorten',      icon:'⇥'  },
+                  ].map(b => (
+                    <button
+                      key={b.id}
+                      className={`ai-tool-btn ${b.id === 'write' && showWritePrompt ? 'active' : ''}`}
+                      onClick={() => runAiAction(b.id)}
+                      disabled={!!aiBusy}
+                    >
+                      {aiBusy === b.id ? <span className="spinner" /> : <span className="ai-tool-icon">{b.icon}</span>}
+                      {b.label}
+                    </button>
+                  ))}
+                </div>
+
+                {showWritePrompt && (
+                  <div className="ai-write-row">
+                    <input
+                      type="text"
+                      placeholder="Tell the AI what to write… e.g. 'a polite follow-up about the invoice'"
+                      value={writePrompt}
+                      onChange={e => setWritePrompt(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') runWriteForMe(); }}
+                      autoFocus
+                    />
+                    <button className="btn btn-primary btn-sm" onClick={runWriteForMe} disabled={!writePrompt.trim() || !!aiBusy}>
+                    {aiBusy === 'write' ? <span className="spinner" /> : 'Generate'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="field" style={{ marginTop: 12 }}>
+                <label>Body</label>
+                <div className={`ai-body-wrap ${aiBusy ? 'busy' : ''}`}>
+                  <textarea
+                    value={compose.body}
+                    onChange={e => setCompose(c => ({ ...c, body: e.target.value }))}
+                    rows={11}
+                    placeholder="Write your email, or use the AI tools above…"
+                    disabled={!!aiBusy}
+                    style={{ width:'100%', padding:'10px 14px', border:'1.5px solid var(--border)', borderRadius:8, fontSize:13, fontFamily:'inherit', resize:'vertical', outline:'none', lineHeight:1.6 }}
+                    onFocus={e => e.target.style.borderColor = 'var(--blue)'}
+                    onBlur={e => e.target.style.borderColor = 'var(--border)'}
+                  />
+                  {aiBusy && (
+                    <div className="ai-body-overlay">
+                      <span className="spinner spinner-dark" />
+                      <span>✨ {AI_BUSY_LABEL[aiBusy] ?? 'Working…'}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {composeError && <div className="alert alert-error show">{composeError}</div>}
+              <div style={{ display:'flex', gap:10, justifyContent:'flex-end', marginTop: 4 }}>
+                <button className="btn btn-secondary" onClick={() => setComposeOpen(false)}>Cancel</button>
+                <button className="btn btn-primary" onClick={sendComposed} disabled={composeSending}>
+                  {composeSending ? <><span className="spinner" /> Sending…</> : '📤 Send Email'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Send Confirmation Modal */}
       {pendingEmail && (
@@ -456,31 +807,26 @@ export default function Chat() {
               <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 18 }}>
                 Review and edit this email before it's sent. Nothing has been sent yet.
               </p>
-
               <div className="field">
                 <label>To</label>
                 <input type="text" value={pendingEmail.to ?? ''} onChange={e => setPendingEmail(p => ({ ...p, to: e.target.value }))} />
               </div>
-
-              {(pendingEmail.cc !== undefined) && (
+              {pendingEmail.cc !== undefined && (
                 <div className="field">
                   <label>CC</label>
                   <input type="text" value={pendingEmail.cc ?? ''} onChange={e => setPendingEmail(p => ({ ...p, cc: e.target.value }))} placeholder="optional" />
                 </div>
               )}
-
-              {(pendingEmail.bcc !== undefined) && (
+              {pendingEmail.bcc !== undefined && (
                 <div className="field">
                   <label>BCC</label>
                   <input type="text" value={pendingEmail.bcc ?? ''} onChange={e => setPendingEmail(p => ({ ...p, bcc: e.target.value }))} placeholder="optional" />
                 </div>
               )}
-
               <div className="field">
                 <label>Subject</label>
                 <input type="text" value={pendingEmail.subject ?? ''} onChange={e => setPendingEmail(p => ({ ...p, subject: e.target.value }))} />
               </div>
-
               <div className="field">
                 <label>Body</label>
                 <textarea
@@ -492,13 +838,9 @@ export default function Chat() {
                   onBlur={e => e.target.style.borderColor = 'var(--border)'}
                 />
               </div>
-
               {sendEmailError && <div className="alert alert-error show">{sendEmailError}</div>}
-
               <div style={{ display:'flex', gap:10, justifyContent:'flex-end', marginTop: 4 }}>
-                <button className="btn btn-secondary" onClick={() => { setPendingEmail(null); setSendEmailError(''); }}>
-                  Cancel
-                </button>
+                <button className="btn btn-secondary" onClick={() => { setPendingEmail(null); setSendEmailError(''); }}>Cancel</button>
                 <button className="btn btn-primary" onClick={sendEmailDirectly} disabled={sendingEmail}>
                   {sendingEmail ? <><span className="spinner" /> Sending…</> : '📤 Send Email'}
                 </button>
@@ -521,7 +863,6 @@ export default function Chat() {
               <button className={`stab ${settingsTab === 'ai' ? 'active' : ''}`} onClick={() => setSettingsTab('ai')}>AI Providers</button>
             </div>
             <div className="settings-body">
-
               {settingsTab === 'accounts' && (
                 <>
                   {accounts.length === 0 && <p style={{ fontSize:13, color:'var(--muted)', marginBottom:8 }}>No accounts yet.</p>}
@@ -562,7 +903,6 @@ export default function Chat() {
                   )}
                 </>
               )}
-
               {settingsTab === 'ai' && (
                 <>
                   {llmProviders.length === 0 && <p style={{ fontSize:13, color:'var(--muted)', marginBottom:8 }}>No AI providers yet.</p>}
@@ -597,7 +937,11 @@ export default function Chat() {
                         ))}
                       </div>
                       <div className="field"><label>API Key</label><input type="password" placeholder="sk-… or sk-ant-…" value={newLlm.apiKey} onChange={e => setNewLlm(l => ({...l, apiKey:e.target.value}))} /></div>
-                      <div className="field"><label>Model <span className="hint">optional</span></label><input type="text" placeholder={modelPh[newLlm.provider]} value={newLlm.model} onChange={e => setNewLlm(l => ({...l, model:e.target.value}))} /></div>
+                      <div className="field">
+                        <label>Model <span className="hint">optional</span></label>
+                        <ModelPicker provider={newLlm.provider} value={newLlm.model} onChange={v => setNewLlm(l => ({...l, model:v}))} />
+                        <input type="text" placeholder={modelPh[newLlm.provider]} value={newLlm.model} onChange={e => setNewLlm(l => ({...l, model:e.target.value}))} style={{ marginTop: 8 }} />
+                      </div>
                       {llmErr && <div className="alert alert-error show">{llmErr}</div>}
                       <div className="add-form-actions">
                         <button className="btn btn-secondary btn-sm" onClick={() => { setShowAddLlm(false); setLlmErr(''); }}>Cancel</button>
@@ -609,7 +953,6 @@ export default function Chat() {
                   )}
                 </>
               )}
-
             </div>
           </div>
         </div>

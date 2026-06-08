@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, getToken } from '../lib/api.js';
+import ModelPicker from '../lib/ModelPicker.jsx';
 
 const KNOWN_HOSTS = {
   'gmail.com':   { imap: 'imap.gmail.com',        smtp: 'smtp.gmail.com',      ip: 993, sp: 465 },
@@ -218,7 +219,8 @@ export default function Setup() {
               </div>
               <div className="field">
                 <label>Model <span className="hint">optional — leave blank for default</span></label>
-                <input type="text" placeholder={modelPlaceholders[llm.provider]} value={llm.model} onChange={e => setL('model', e.target.value)} />
+                <ModelPicker provider={llm.provider} value={llm.model} onChange={v => setL('model', v)} />
+                <input type="text" placeholder={modelPlaceholders[llm.provider]} value={llm.model} onChange={e => setL('model', e.target.value)} style={{ marginTop: 8 }} />
               </div>
               <div className="step-actions">
                 <button className="btn btn-secondary btn-sm" style={{ flex: '0 0 auto' }} onClick={() => { setStep(1); setError(''); }}>← Back</button>

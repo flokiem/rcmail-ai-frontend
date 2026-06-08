@@ -14,6 +14,10 @@ export default function Login() {
   const [regEmail, setRegEmail]           = useState('');
   const [regPassword, setRegPassword]     = useState('');
   const [forgotEmail, setForgotEmail]     = useState('');
+  const [forgotStep, setForgotStep]       = useState(1);
+  const [forgotToken, setForgotToken]     = useState('');
+  const [newPassword, setNewPassword]     = useState('');
+  const [newConfirm,  setNewConfirm]      = useState('');
 
   useEffect(() => {
     const token = getToken();
@@ -55,18 +59,39 @@ export default function Login() {
     finally { setLoading(false); }
   }
 
-  async function doForgot(e) {
+  async function doForgotEmail(e) {
     e.preventDefault();
     setError(''); setLoading(true);
     try {
-      await api.post('/api/auth/forgot-password', { email: forgotEmail });
-      setSuccess('If that email exists, a reset link has been sent. Check your inbox.');
-      setForgotEmail('');
+      const r = await api.post('/api/auth/forgot-password', { email: forgotEmail });
+      const d = await r.json();
+      if (!r.ok) return setError(d.error ?? 'No account found with that email.');
+      setForgotToken(d.token ?? '');
+      setForgotStep(2);
     } catch { setError('Network error. Please try again.'); }
     finally { setLoading(false); }
   }
 
-  function switchTab(t) { setTab(t); setError(''); setSuccess(''); }
+  async function doForgotReset(e) {
+    e.preventDefault();
+    setError('');
+    if (newPassword.length < 8) return setError('Password must be at least 8 characters.');
+    if (newPassword !== newConfirm) return setError('Passwords do not match.');
+    setLoading(true);
+    try {
+      const r = await api.post('/api/auth/reset-password', { token: forgotToken, password: newPassword });
+      const d = await r.json();
+      if (!r.ok) return setError(d.error ?? 'Reset failed. Please try again.');
+      setSuccess('Password updated! You can now sign in.');
+      switchTab('login');
+    } catch { setError('Network error. Please try again.'); }
+    finally { setLoading(false); }
+  }
+
+  function switchTab(t) {
+    setTab(t); setError(''); setSuccess('');
+    if (t !== 'forgot') { setForgotStep(1); setForgotEmail(''); setForgotToken(''); setNewPassword(''); setNewConfirm(''); }
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 16px' }}>
@@ -131,21 +156,42 @@ export default function Login() {
           )}
 
           {tab === 'forgot' && (
-            <form onSubmit={doForgot}>
+            <form onSubmit={forgotStep === 1 ? doForgotEmail : doForgotReset}>
               <div style={{ marginBottom: 18 }}>
-                <button type="button" onClick={() => switchTab('login')} style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: 13, cursor: 'pointer', padding: 0, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  ← Back to Sign In
+                <button type="button" onClick={() => forgotStep === 2 ? setForgotStep(1) : switchTab('login')} style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: 13, cursor: 'pointer', padding: 0, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  ← {forgotStep === 2 ? 'Back' : 'Back to Sign In'}
                 </button>
                 <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>Reset your password</h3>
-                <p style={{ fontSize: 13, color: 'var(--muted)' }}>Enter your email and we'll send you a reset link.</p>
+                <p style={{ fontSize: 13, color: 'var(--muted)' }}>
+                  {forgotStep === 1 ? 'Enter your account email to continue.' : 'Choose a new password for your account.'}
+                </p>
               </div>
-              <div className="field">
-                <label>Email</label>
-                <input type="email" placeholder="you@example.com" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} autoComplete="email" />
-              </div>
+
+              {forgotStep === 1 && (
+                <div className="field">
+                  <label>Email</label>
+                  <input type="email" placeholder="you@example.com" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} autoComplete="email" />
+                </div>
+              )}
+
+              {forgotStep === 2 && (
+                <>
+                  <div className="field">
+                    <label>New Password <span className="hint">min 8 characters</span></label>
+                    <input type="password" placeholder="New password" value={newPassword} onChange={e => setNewPassword(e.target.value)} autoComplete="new-password" />
+                  </div>
+                  <div className="field">
+                    <label>Confirm Password</label>
+                    <input type="password" placeholder="Repeat new password" value={newConfirm} onChange={e => setNewConfirm(e.target.value)} autoComplete="new-password" />
+                  </div>
+                </>
+              )}
+
               <button className="btn btn-primary btn-full" type="submit" disabled={loading}>
                 {loading && <span className="spinner" />}
-                {loading ? 'Sending…' : 'Send Reset Link'}
+                {forgotStep === 1
+                  ? (loading ? 'Checking…' : 'Continue')
+                  : (loading ? 'Saving…' : 'Update Password')}
               </button>
             </form>
           )}

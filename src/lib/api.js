@@ -26,6 +26,14 @@ export const api = {
   del:  (path)        => req(path, { method: 'DELETE' }),
 };
 
+// AI composer assist: action = 'write' | 'proofread' | 'expand' | 'shorten'
+export async function aiCompose({ llmId, action, text, instruction, tone, model }) {
+  const r = await req('/api/ai/compose', { method: 'POST', body: { llmId, action, text, instruction, tone, model } });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error ?? 'AI request failed.');
+  return d.text ?? '';
+}
+
 export function streamChat(threadId, message, { onTool, onDone, onError, onSendPreview }) {
   const ctrl = new AbortController();
 

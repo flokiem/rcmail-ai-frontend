@@ -403,6 +403,10 @@ export default function Chat() {
   const currentAcct   = accounts.find(a => a.id === currentThread?.account_id);
   const currentLlm    = llmProviders.find(l => l.id === currentThread?.llm_id);
 
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const userInitial = userEmail ? userEmail[0].toUpperCase() : 'U';
+
   return (
     <div className="chat-root">
       {/* Mobile drawer backdrop */}
@@ -636,11 +640,19 @@ export default function Chat() {
           {messages.length === 0 && !isTyping && (
             <div className="empty-state">
               <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
-              <h3>What can I help you with?</h3>
+              <h3>{greeting} — what can I help with?</h3>
               <p>Ask me to read your emails, search for messages, send a reply, or manage your inbox.</p>
               <div className="suggestions">
-                {['Show my unread emails','Search for emails from my boss','How many unread emails do I have?','List my email folders'].map(s => (
-                  <div key={s} className="suggestion" onClick={() => sendMessage(s)}>{s}</div>
+                {[
+                  { icon: '📬', text: 'Show my unread emails' },
+                  { icon: '🧾', text: "Summarize today's inbox" },
+                  { icon: '🔍', text: 'Search for emails from my boss' },
+                  { icon: '✍️', text: 'Draft a reply to my latest email' },
+                  { icon: '📂', text: 'List my email folders' },
+                ].map(s => (
+                  <div key={s.text} className="suggestion" onClick={() => sendMessage(s.text)}>
+                    <span>{s.icon}</span>{s.text}
+                  </div>
                 ))}
               </div>
             </div>
@@ -648,7 +660,7 @@ export default function Chat() {
 
           {messages.map((m, i) => (
             <div key={i} className={`message ${m.role}`}>
-              <div className={`avatar ${m.role === 'user' ? 'avatar-user' : 'avatar-ai'}`}>{m.role === 'user' ? 'You' : '✦'}</div>
+              <div className={`avatar ${m.role === 'user' ? 'avatar-user' : 'avatar-ai'}`}>{m.role === 'user' ? userInitial : '✦'}</div>
               <div className="bubble" dangerouslySetInnerHTML={{ __html: formatContent(m.content) }} />
             </div>
           ))}

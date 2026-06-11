@@ -26,6 +26,25 @@ export const api = {
   del:  (path)        => req(path, { method: 'DELETE' }),
 };
 
+// Inbox: list emails for an account since a cutoff date (defaults to June 1, 2026).
+export const INBOX_SINCE = '2026-06-01';
+
+export async function listInboxEmails(accountId, { since = INBOX_SINCE, folder = 'INBOX', limit = 50 } = {}) {
+  const qs = new URLSearchParams({ since, folder, limit: String(limit) });
+  const r = await req(`/api/accounts/${accountId}/emails?${qs}`);
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error ?? 'Failed to load emails.');
+  return d.messages ?? [];
+}
+
+export async function readInboxEmail(accountId, uid, folder = 'INBOX') {
+  const qs = new URLSearchParams({ folder });
+  const r = await req(`/api/accounts/${accountId}/emails/${uid}?${qs}`);
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error ?? 'Failed to open email.');
+  return d;
+}
+
 // AI composer assist: action = 'write' | 'proofread' | 'expand' | 'shorten'
 export async function aiCompose({ llmId, action, text, instruction, tone, model }) {
   const r = await req('/api/ai/compose', { method: 'POST', body: { llmId, action, text, instruction, tone, model } });

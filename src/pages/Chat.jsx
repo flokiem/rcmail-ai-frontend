@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, clearToken, getToken, streamChat, aiCompose } from '../lib/api.js';
 import ModelPicker, { PROVIDER_MODELS } from '../lib/ModelPicker.jsx';
+import InboxPanel from '../lib/InboxPanel.jsx';
 
 const ACCOUNT_COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4'];
 const LLM_INFO = {
@@ -49,6 +50,7 @@ export default function Chat() {
   const [isTyping, setIsTyping]         = useState(false);
   const [msgInput, setMsgInput]         = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [inboxOpen, setInboxOpen]       = useState(false);
   const [sidebarOpen, setSidebarOpen]   = useState(false);
   const [settingsTab, setSettingsTab]   = useState('accounts');
   const [threadTitle, setThreadTitle]   = useState('Floki Mail');
@@ -441,6 +443,10 @@ export default function Chat() {
             <svg viewBox="0 0 24 24" style={{ width:14, height:14, fill:'currentColor', flexShrink:0 }}><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.9959.9959 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
             Compose Email
           </button>
+          <button className={`btn-inbox ${inboxOpen ? 'active' : ''}`} onClick={() => { setInboxOpen(o => !o); setSidebarOpen(false); }} style={{ marginTop: 8 }} disabled={accounts.length === 0}>
+            <svg viewBox="0 0 24 24" style={{ width:14, height:14, fill:'currentColor', flexShrink:0 }}><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 12h-4c0 1.66-1.35 3-3 3s-3-1.34-3-3H5V5h14v10z"/></svg>
+            Inbox
+          </button>
         </div>
 
         <div className="threads-list">
@@ -488,6 +494,14 @@ export default function Chat() {
           </div>
         </div>
       </aside>
+
+      {/* Inbox dock — sits to the left of the chat, toggled by the sidebar button */}
+      <InboxPanel
+        open={inboxOpen}
+        onClose={() => setInboxOpen(false)}
+        accounts={accounts}
+        defaultAccountId={selectedAccountId}
+      />
 
       {/* Main */}
       <div className="main">

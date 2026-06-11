@@ -92,13 +92,13 @@ export default function Setup() {
   const modelPlaceholders = { claude: 'e.g. claude-sonnet-4-6', openai: 'e.g. gpt-4o', groq: 'e.g. llama-3.3-70b-versatile', perplexity: 'e.g. sonar-pro' };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 16px 60px' }}>
-      <div style={{ textAlign: 'center', marginBottom: 28 }}>
+    <div className="auth-page">
+      <div className="auth-head">
         <div className="page-logo" style={{ justifyContent: 'center' }}>
           <img src="/flokilogo.PNG" alt="Floki" className="logo-img" />
           <span className="logo-text">Floki Mail</span>
         </div>
-        <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 6 }}>Let's connect your mailbox and AI provider</p>
+        <p className="tagline">Let's connect your mailbox and AI provider</p>
       </div>
 
       <div className="card" style={{ width: '100%', maxWidth: 480 }}>

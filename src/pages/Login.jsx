@@ -94,13 +94,13 @@ export default function Login() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 16px' }}>
-      <div style={{ textAlign: 'center', marginBottom: 32 }}>
+    <div className="auth-page">
+      <div className="auth-head">
         <div className="page-logo" style={{ justifyContent: 'center' }}>
           <img src="/flokilogo.PNG" alt="Floki" className="logo-img" />
           <span className="logo-text">Floki Mail</span>
         </div>
-        <p style={{ color: 'var(--muted)', fontSize: 15, marginTop: 8 }}>Your AI-powered email assistant</p>
+        <p className="tagline">Your AI-powered email assistant</p>
       </div>
 
       <div className="card" style={{ width: '100%', maxWidth: 420 }}>

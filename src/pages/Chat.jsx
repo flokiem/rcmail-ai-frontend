@@ -648,14 +648,14 @@ export default function Chat() {
 
           {messages.map((m, i) => (
             <div key={i} className={`message ${m.role}`}>
-              <div className={`avatar ${m.role === 'user' ? 'avatar-user' : 'avatar-ai'}`}>{m.role === 'user' ? 'You' : 'AI'}</div>
+              <div className={`avatar ${m.role === 'user' ? 'avatar-user' : 'avatar-ai'}`}>{m.role === 'user' ? 'You' : '✦'}</div>
               <div className="bubble" dangerouslySetInnerHTML={{ __html: formatContent(m.content) }} />
             </div>
           ))}
 
           {isTyping && (
             <div className="message assistant">
-              <div className="avatar avatar-ai">AI</div>
+              <div className="avatar avatar-ai">✦</div>
               <div className="bubble" style={{ display:'flex', flexDirection:'column', alignItems:'flex-start', gap:7 }}>
                 <div className="typing-dots">
                   <span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />

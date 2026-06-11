@@ -265,7 +265,30 @@ body {
 .btn-send:hover { background: var(--blue-d); }
 .btn-send:disabled { background: #93c5fd; cursor: not-allowed; }
 .btn-send svg { width: 16px; height: 16px; fill: #fff; }
+.btn-mic { width: 34px; height: 34px; background: #fff; border: 1.5px solid var(--border); border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.15s, border-color 0.15s; }
+.btn-mic:hover { background: var(--gray); border-color: var(--blue); }
+.btn-mic:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-mic svg { width: 18px; height: 18px; fill: #64748b; transition: fill 0.15s; }
+.btn-mic:hover svg { fill: var(--blue); }
+.btn-mic.listening { background: #ef4444; border-color: #ef4444; animation: mic-pulse 1.3s ease-in-out infinite; }
+.btn-mic.listening svg { fill: #fff; }
+@keyframes mic-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.45); } 50% { box-shadow: 0 0 0 6px rgba(239,68,68,0); } }
 .input-hint { font-size: 10px; color: #94a3b8; margin-top: 5px; text-align: center; }
+
+/* Chat context bar — shows which email the chat is currently focused on */
+.chat-context-bar { background: var(--blue-l); border: 1.5px solid #bfdbfe; border-radius: 11px; padding: 8px 10px; margin-bottom: 8px; animation: ccb-in 0.18s ease; }
+@keyframes ccb-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.ccb-info { display: flex; align-items: center; gap: 9px; }
+.ccb-icon { font-size: 15px; flex-shrink: 0; }
+.ccb-text { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.ccb-label { font-size: 11px; font-weight: 700; color: var(--blue-d); letter-spacing: 0.01em; }
+.ccb-sub { font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ccb-close { flex-shrink: 0; width: 22px; height: 22px; border: none; background: transparent; color: var(--blue-d); font-size: 18px; line-height: 1; cursor: pointer; border-radius: 6px; transition: background 0.15s; }
+.ccb-close:hover { background: rgba(37,99,235,0.12); }
+.ccb-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.ccb-action { font-size: 11.5px; font-weight: 500; color: var(--blue-d); background: #fff; border: 1px solid #bfdbfe; border-radius: 16px; padding: 4px 11px; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+.ccb-action:hover:not(:disabled) { background: var(--blue); color: #fff; border-color: var(--blue); }
+.ccb-action:disabled { opacity: 0.5; cursor: not-allowed; }
 
 /* Settings modal */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 200; display: none; align-items: center; justify-content: center; }
@@ -444,7 +467,7 @@ body {
   .input-area { padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); }
   .input-hint { display: none; }
   .msg-input { font-size: 16px; }            /* 16px+ prevents iOS focus-zoom */
-  .btn-send, .btn-stop { width: 38px; height: 38px; }
+  .btn-send, .btn-stop, .btn-mic { width: 38px; height: 38px; }
 
   /* Form controls: 16px avoids iOS zoom-on-focus */
   .field input, .field select, .ai-write-row input, .model-custom-input, .inbox-subhead select { font-size: 16px; }

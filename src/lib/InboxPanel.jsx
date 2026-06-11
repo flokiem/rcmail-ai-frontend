@@ -48,7 +48,7 @@ function emailSrcDoc(html) {
 </style></head><body>${html}</body></html>`;
 }
 
-export default function InboxPanel({ open, onClose, accounts, defaultAccountId }) {
+export default function InboxPanel({ open, onClose, accounts, defaultAccountId, onActiveEmailChange }) {
   const [accountId, setAccountId]   = useState(defaultAccountId || '');
   const [emails, setEmails]         = useState([]);
   const [loading, setLoading]       = useState(false);
@@ -108,8 +108,12 @@ export default function InboxPanel({ open, onClose, accounts, defaultAccountId }
     if (!open || !accountId) return;
     setOpenUid(null);
     setDetail(null);
+    onActiveEmailChange?.(null);
     load();
-  }, [open, accountId, load]);
+  }, [open, accountId, load]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Detach the chat context when the panel is closed.
+  useEffect(() => { if (!open) onActiveEmailChange?.(null); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 60s polling + refresh when the tab regains focus
   useEffect(() => {
@@ -153,6 +157,18 @@ export default function InboxPanel({ open, onClose, accounts, defaultAccountId }
     const cached = getCachedMail(id, uid);
     setOpenUid(uid);
     setDetailError('');
+    // Tell the chat which email is now open so the user can talk about it directly.
+    const row = emails.find(e => e.uid === uid);
+    onActiveEmailChange?.({
+      type: 'email',
+      accountId: id,
+      account: accounts.find(a => String(a.id) === String(id))?.label,
+      uid,
+      folder: 'INBOX',
+      from: row?.from,
+      subject: row?.subject,
+      date: row?.date,
+    });
     if (cached) { setDetail(cached); setDetailLoading(false); }
     else { setDetail(null); setDetailLoading(true); }
     try {
@@ -171,6 +187,7 @@ export default function InboxPanel({ open, onClose, accounts, defaultAccountId }
     setOpenUid(null);
     setDetail(null);
     setDetailError('');
+    onActiveEmailChange?.(null);
   }
 
   if (!open) return null;

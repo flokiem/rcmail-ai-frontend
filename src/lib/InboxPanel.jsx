@@ -1,20 +1,58 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { listInboxEmails, readInboxEmail, INBOX_SINCE } from './api.js';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { listInboxEmails, readInboxEmail, listFolders, INBOX_SINCE } from './api.js';
 
 const REFRESH_MS = 40000; // auto-refresh the inbox every 40 seconds
-const MIN_W = 300, MAX_W = 720, DEFAULT_W = 380; // inbox dock width bounds (px)
+const MIN_W = 360, MAX_W = 760, DEFAULT_W = 480; // inbox dock width bounds (px) — fits folder rail + list
 
 // ── Persistent caches (localStorage) so the inbox/emails load instantly,
 //    even across page reloads. Falls back silently if storage is unavailable. ──
 const LS_LIST = 'inbox.list.';      // + accountId            -> messages[]
 const LS_MAIL = 'inbox.mail.';      // + `${accountId}:${uid}` -> detail
+const LS_FOLDERS = 'inbox.folders.'; // + accountId            -> folders[]
 const lsGet = (k) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* quota / private mode */ } };
 
-const getCachedList = (id)        => lsGet(LS_LIST + id);
-const setCachedList = (id, msgs)  => lsSet(LS_LIST + id, msgs);
-const getCachedMail = (id, uid)   => lsGet(`${LS_MAIL}${id}:${uid}`);
-const setCachedMail = (id, uid, d) => lsSet(`${LS_MAIL}${id}:${uid}`, d);
+const getCachedList = (id, folder)        => lsGet(`${LS_LIST}${id}:${folder}`);
+const setCachedList = (id, folder, msgs)  => lsSet(`${LS_LIST}${id}:${folder}`, msgs);
+const getCachedMail = (id, folder, uid)   => lsGet(`${LS_MAIL}${id}:${folder}:${uid}`);
+const setCachedMail = (id, folder, uid, d) => lsSet(`${LS_MAIL}${id}:${folder}:${uid}`, d);
+const getCachedFolders = (id)        => lsGet(LS_FOLDERS + id);
+const setCachedFolders = (id, fs)    => lsSet(LS_FOLDERS + id, fs);
+
+// ── Folder display: friendly icon/label + sort order from IMAP special-use flags ──
+// The special-use token may arrive as `specialUse` (SPECIAL-USE ext.) or inside `flags`.
+function specialUse(f) {
+  if (f.specialUse) return f.specialUse;
+  return (f.flags || []).find(x => ['\\Sent', '\\Drafts', '\\Junk', '\\Trash', '\\All', '\\Flagged', '\\Important', '\\Archive'].includes(x)) || '';
+}
+function folderIcon(f) {
+  if (f.path.toUpperCase() === 'INBOX') return '📥';
+  switch (specialUse(f)) {
+    case '\\Flagged':   return '⭐';
+    case '\\Important': return '🔖';
+    case '\\Sent':      return '📤';
+    case '\\Drafts':    return '📝';
+    case '\\All':
+    case '\\Archive':   return '🗂️';
+    case '\\Junk':      return '⚠️';
+    case '\\Trash':     return '🗑️';
+    default:            return '📁';
+  }
+}
+function folderOrder(f) {
+  if (f.path.toUpperCase() === 'INBOX') return 0;
+  switch (specialUse(f)) {
+    case '\\Flagged':   return 1;
+    case '\\Important': return 2;
+    case '\\Sent':      return 3;
+    case '\\Drafts':    return 4;
+    case '\\All':
+    case '\\Archive':   return 5;
+    case '\\Junk':      return 6;
+    case '\\Trash':     return 7;
+    default:            return 100; // custom folders / labels last
+  }
+}
 
 function fmtRowDate(iso) {
   if (!iso) return '';
@@ -50,6 +88,8 @@ function emailSrcDoc(html) {
 
 export default function InboxPanel({ open, onClose, accounts, defaultAccountId, onActiveEmailChange }) {
   const [accountId, setAccountId]   = useState(defaultAccountId || '');
+  const [folders, setFolders]       = useState([]);
+  const [folder, setFolder]         = useState('INBOX');
   const [emails, setEmails]         = useState([]);
   const [loading, setLoading]       = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -71,9 +111,11 @@ export default function InboxPanel({ open, onClose, accounts, defaultAccountId, 
   const widthRef    = useRef(width);
   widthRef.current = width;
 
-  // ref so the polling interval always sees the current account
+  // refs so the polling interval always sees the current account + folder
   const accountIdRef = useRef(accountId);
   accountIdRef.current = accountId;
+  const folderRef = useRef(folder);
+  folderRef.current = folder;
 
   // Default to the chat's selected account when the panel first opens
   useEffect(() => {
@@ -82,8 +124,9 @@ export default function InboxPanel({ open, onClose, accounts, defaultAccountId, 
 
   const load = useCallback(async ({ silent = false } = {}) => {
     const id = accountIdRef.current;
+    const fld = folderRef.current;
     if (!id) return;
-    const cached = getCachedList(id);
+    const cached = getCachedList(id, fld);
     if (cached && !silent) setEmails(cached); // show cached instantly
 
     if (silent) setRefreshing(true);
@@ -91,9 +134,11 @@ export default function InboxPanel({ open, onClose, accounts, defaultAccountId, 
     else setError('');
 
     try {
-      const msgs = await listInboxEmails(id);
+      const msgs = await listInboxEmails(id, { folder: fld });
+      // Ignore the response if the user switched folder/account mid-request.
+      if (accountIdRef.current !== id || folderRef.current !== fld) return;
       setEmails(msgs);
-      setCachedList(id, msgs);
+      setCachedList(id, fld, msgs);
       setLastUpdated(new Date());
     } catch (e) {
       if (!silent && !cached) setError(e.message);
@@ -103,14 +148,27 @@ export default function InboxPanel({ open, onClose, accounts, defaultAccountId, 
     }
   }, []);
 
-  // Load on open / account change (and reset any open email)
+  // Load the account's folder list when the panel opens / account changes.
+  // Show the cached list instantly (no waiting on the live IMAP round-trip),
+  // then refresh in the background so switching accounts feels immediate.
+  useEffect(() => {
+    if (!open || !accountId) return;
+    setFolders(getCachedFolders(accountId) || []); // instant; clears stale on a cache miss
+    let cancelled = false;
+    listFolders(accountId)
+      .then(fs => { if (!cancelled) { setFolders(fs); setCachedFolders(accountId, fs); } })
+      .catch(() => { /* keep whatever we showed (cached or empty) */ });
+    return () => { cancelled = true; };
+  }, [open, accountId]);
+
+  // Load on open / account / folder change (and reset any open email)
   useEffect(() => {
     if (!open || !accountId) return;
     setOpenUid(null);
     setDetail(null);
     onActiveEmailChange?.(null);
     load();
-  }, [open, accountId, load]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, accountId, folder, load]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Detach the chat context when the panel is closed.
   useEffect(() => { if (!open) onActiveEmailChange?.(null); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -152,9 +210,20 @@ export default function InboxPanel({ open, onClose, accounts, defaultAccountId, 
     document.body.style.userSelect = 'none';
   }
 
+  // Switch account → reset to its Inbox (folder list reloads via effect).
+  function changeAccount(id) {
+    setAccountId(id);
+    setFolder('INBOX');
+  }
+
+  function selectFolder(path) {
+    if (path !== folderRef.current) setFolder(path);
+  }
+
   async function openEmail(uid) {
-    const id = accountIdRef.current;
-    const cached = getCachedMail(id, uid);
+    const id  = accountIdRef.current;
+    const fld = folderRef.current;
+    const cached = getCachedMail(id, fld, uid);
     setOpenUid(uid);
     setDetailError('');
     // Tell the chat which email is now open so the user can talk about it directly.
@@ -164,7 +233,7 @@ export default function InboxPanel({ open, onClose, accounts, defaultAccountId, 
       accountId: id,
       account: accounts.find(a => String(a.id) === String(id))?.label,
       uid,
-      folder: 'INBOX',
+      folder: fld,
       from: row?.from,
       subject: row?.subject,
       date: row?.date,
@@ -172,9 +241,9 @@ export default function InboxPanel({ open, onClose, accounts, defaultAccountId, 
     if (cached) { setDetail(cached); setDetailLoading(false); }
     else { setDetail(null); setDetailLoading(true); }
     try {
-      const data = await readInboxEmail(id, uid);
+      const data = await readInboxEmail(id, uid, fld);
       setDetail(data);
-      setCachedMail(id, uid, data);
+      setCachedMail(id, fld, uid, data);
       setEmails(es => es.map(e => (e.uid === uid ? { ...e, seen: true } : e)));
     } catch (e) {
       if (!cached) setDetailError(e.message);
@@ -190,9 +259,20 @@ export default function InboxPanel({ open, onClose, accounts, defaultAccountId, 
     onActiveEmailChange?.(null);
   }
 
+  // Selectable folders, friendly-labelled and sorted (special folders first).
+  const folderList = useMemo(() => (
+    folders
+      .filter(f => !(f.flags || []).includes('\\Noselect'))
+      .map(f => ({ path: f.path, label: f.name || f.path, icon: folderIcon(f), order: folderOrder(f) }))
+      .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label))
+  ), [folders]);
+
   if (!open) return null;
 
   const unreadCount = emails.filter(e => !e.seen).length;
+  const current     = folderList.find(f => f.path === folder);
+  const headIcon    = current?.icon  || '📥';
+  const headLabel   = current?.label || 'Inbox';
 
   return (
     <>
@@ -204,7 +284,7 @@ export default function InboxPanel({ open, onClose, accounts, defaultAccountId, 
               <button className="inbox-back-btn" onClick={backToList} title="Back to inbox">←</button>
             )}
             <h3>
-              📥 Inbox
+              {headIcon} {headLabel}
               {unreadCount > 0 && <span className="inbox-unread-badge">{unreadCount}</span>}
             </h3>
           </div>
@@ -217,13 +297,30 @@ export default function InboxPanel({ open, onClose, accounts, defaultAccountId, 
         </div>
 
         <div className="inbox-subhead">
-          <select value={accountId} onChange={e => setAccountId(e.target.value)}>
+          <select value={accountId} onChange={e => changeAccount(e.target.value)}>
             {accounts.map(a => <option key={a.id} value={a.id}>{a.label} — {a.imap_user}</option>)}
           </select>
           <span className="inbox-since">Since {sinceLabel({ month: 'short', day: 'numeric', year: 'numeric' })}</span>
         </div>
 
-        <div className="inbox-body">
+        <div className="inbox-main">
+          {openUid === null && folderList.length > 0 && (
+            <nav className="inbox-folders">
+              {folderList.map(f => (
+                <button
+                  key={f.path}
+                  className={`inbox-folder ${f.path === folder ? 'active' : ''}`}
+                  onClick={() => selectFolder(f.path)}
+                  title={f.label}
+                >
+                  <span className="inbox-folder-icon">{f.icon}</span>
+                  <span className="inbox-folder-label">{f.label}</span>
+                </button>
+              ))}
+            </nav>
+          )}
+
+          <div className="inbox-body">
           {openUid !== null ? (
             <div className="inbox-detail">
               {detailLoading && !detail ? (
@@ -260,11 +357,11 @@ export default function InboxPanel({ open, onClose, accounts, defaultAccountId, 
               ) : null}
             </div>
           ) : loading ? (
-            <div className="inbox-empty">Loading inbox…</div>
+            <div className="inbox-empty">Loading {headLabel}…</div>
           ) : error ? (
             <div className="alert alert-error show">{error}</div>
           ) : emails.length === 0 ? (
-            <div className="inbox-empty">No emails since {sinceLabel({ month: 'short', day: 'numeric' })}.</div>
+            <div className="inbox-empty">No emails in {headLabel}.</div>
           ) : (
             <ul className="inbox-list">
               {emails.map(m => (
@@ -281,6 +378,7 @@ export default function InboxPanel({ open, onClose, accounts, defaultAccountId, 
               ))}
             </ul>
           )}
+          </div>
         </div>
 
         {openUid === null && lastUpdated && (

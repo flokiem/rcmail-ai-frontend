@@ -37,6 +37,14 @@ export async function listInboxEmails(accountId, { since = INBOX_SINCE, folder =
   return d.messages ?? [];
 }
 
+// List an account's mail folders (Inbox, Sent, Drafts, Trash, custom labels…).
+export async function listFolders(accountId) {
+  const r = await req(`/api/accounts/${accountId}/folders`);
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error ?? 'Failed to load folders.');
+  return d.folders ?? [];
+}
+
 export async function readInboxEmail(accountId, uid, folder = 'INBOX') {
   const qs = new URLSearchParams({ folder });
   const r = await req(`/api/accounts/${accountId}/emails/${uid}?${qs}`);

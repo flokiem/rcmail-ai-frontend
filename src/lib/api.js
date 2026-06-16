@@ -37,6 +37,14 @@ export async function listInboxEmails(accountId, { since = INBOX_SINCE, folder =
   return d.messages ?? [];
 }
 
+// List an account's mail folders (Inbox, Sent, Drafts, Trash, custom labels…).
+export async function listFolders(accountId) {
+  const r = await req(`/api/accounts/${accountId}/folders`);
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error ?? 'Failed to load folders.');
+  return d.folders ?? [];
+}
+
 export async function readInboxEmail(accountId, uid, folder = 'INBOX') {
   const qs = new URLSearchParams({ folder });
   const r = await req(`/api/accounts/${accountId}/emails/${uid}?${qs}`);
@@ -53,13 +61,13 @@ export async function aiCompose({ llmId, action, text, instruction, tone, model 
   return d.text ?? '';
 }
 
-export function streamChat(threadId, message, { onTool, onDone, onError, onSendPreview }) {
+export function streamChat(threadId, message, { onTool, onDone, onError, onComposeDraft, context } = {}) {
   const ctrl = new AbortController();
 
   fetch(`${BASE}/api/threads/${threadId}/chat`, {
     method: 'POST',
     headers: authHeaders(),
-    body: JSON.stringify({ message }),
+    body: JSON.stringify(context ? { message, context } : { message }),
     signal: ctrl.signal,
   }).then(async (res) => {
     if (!res.ok) {
@@ -92,7 +100,7 @@ export function streamChat(threadId, message, { onTool, onDone, onError, onSendP
         try { data = JSON.parse(dataStr); } catch { continue; }
 
         if (evtType === 'tool')          onTool(data.name);
-        else if (evtType === 'send_preview') onSendPreview?.(data);
+        else if (evtType === 'compose_draft') onComposeDraft?.(data);
         else if (evtType === 'done')         { onDone(data); return; }
         else if (evtType === 'error')        { onError(data.error ?? 'AI error.'); return; }
       }

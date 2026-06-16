@@ -27,6 +27,12 @@ const TOOL_LABELS = {
 };
 
 function acctColor(idx) { return ACCOUNT_COLORS[idx % ACCOUNT_COLORS.length]; }
+function senderName(from) {
+  if (!from) return '(unknown sender)';
+  const m = from.match(/^(.*?)\s*<(.+)>$/);
+  const name = m ? (m[1] || m[2]) : from;
+  return name.replace(/^"|"$/g, '').trim() || from;
+}
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function formatContent(text) {
   return escHtml(text)
@@ -49,15 +55,17 @@ export default function Chat() {
   const [typingTool, setTypingTool]     = useState('');
   const [isTyping, setIsTyping]         = useState(false);
   const [msgInput, setMsgInput]         = useState('');
+  const [listening, setListening]       = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [inboxOpen, setInboxOpen]       = useState(false);
+  const [activeEmail, setActiveEmail]   = useState(null); // email currently open in the Inbox panel (chat context)
+  // Persistent map of "<accountId>:<uid>" -> threadId, so each email keeps its own chat.
+  const [emailThreadMap, setEmailThreadMap] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('emailChatMap') || '{}'); } catch { return {}; }
+  });
   const [sidebarOpen, setSidebarOpen]   = useState(false);
   const [settingsTab, setSettingsTab]   = useState('accounts');
   const [threadTitle, setThreadTitle]   = useState('Floki Mail');
-
-  const [pendingEmail, setPendingEmail] = useState(null);
-  const [sendingEmail, setSendingEmail] = useState(false);
-  const [sendEmailError, setSendEmailError] = useState('');
 
   const [composeOpen, setComposeOpen]   = useState(false);
   const [compose, setCompose]           = useState({ to:'', cc:'', subject:'', body:'' });
@@ -89,6 +97,62 @@ export default function Chat() {
   const textareaRef      = useRef(null);
   const cancelStreamRef  = useRef(null);
   const headerActionsRef = useRef(null);
+  const recognitionRef   = useRef(null);
+  const baseTranscriptRef = useRef('');
+  const emailThreadMapRef = useRef(emailThreadMap);
+  emailThreadMapRef.current = emailThreadMap;
+
+  const emailKey = (e) => (e && e.uid != null ? `${e.accountId}:${e.uid}` : null);
+  function rememberEmailThread(key, threadId) {
+    if (!key) return;
+    setEmailThreadMap(m => {
+      const next = { ...m, [key]: threadId };
+      try { localStorage.setItem('emailChatMap', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
+
+  // Whether the browser supports the Web Speech API (Chrome/Edge/Safari).
+  const speechSupported = typeof window !== 'undefined' &&
+    (window.SpeechRecognition || window.webkitSpeechRecognition);
+
+  // Clean up any active recognition session when the component unmounts.
+  useEffect(() => () => { try { recognitionRef.current?.abort(); } catch {} }, []);
+
+  function toggleVoiceInput() {
+    if (listening) { recognitionRef.current?.stop(); return; }
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = navigator.language || 'en-US';
+    recognitionRef.current = recognition;
+
+    // Remember what's already typed so dictation appends to it.
+    baseTranscriptRef.current = msgInput ? msgInput.trim() + ' ' : '';
+
+    recognition.onresult = (event) => {
+      let transcript = '';
+      for (let i = 0; i < event.results.length; i++) {
+        transcript += event.results[i][0].transcript;
+      }
+      setMsgInput(baseTranscriptRef.current + transcript);
+      requestAnimationFrame(() => {
+        if (textareaRef.current) autoResize({ target: textareaRef.current });
+      });
+    };
+    recognition.onerror = () => setListening(false);
+    recognition.onend = () => setListening(false);
+
+    try {
+      recognition.start();
+      setListening(true);
+    } catch {
+      setListening(false);
+    }
+  }
 
   useEffect(() => {
     if (!getToken()) { navigate('/', { replace: true }); return; }
@@ -98,6 +162,26 @@ export default function Chat() {
   useEffect(() => {
     if (messagesRef.current) messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
   }, [messages, isTyping]);
+
+  // Each email gets its own chat. Opening an email restores that email's thread
+  // (if one exists) or starts a fresh empty chat; the chat also follows the
+  // email's mailbox so "this email" always resolves correctly.
+  useEffect(() => {
+    if (!activeEmail?.uid) return;
+    const acctId = Number(activeEmail.accountId);
+    if (acctId) setSelectedAccountId(String(acctId));
+
+    const key    = emailKey(activeEmail);
+    const mapped = emailThreadMapRef.current[key];
+    if (mapped && threads.some(t => t.id === mapped)) {
+      if (mapped !== currentThreadId) loadThread(mapped);
+    } else {
+      // No saved chat for this email yet — open a fresh one (created on first send).
+      setCurrentThreadId(null);
+      setMessages([]);
+      setThreadTitle(activeEmail.subject ? activeEmail.subject.slice(0, 50) : 'New Chat');
+    }
+  }, [activeEmail]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!headerDropdown) return;
@@ -143,11 +227,21 @@ export default function Chat() {
     return idx >= 0 ? acctColor(idx) : '#94a3b8';
   }
 
-  async function newChat() {
+  // Build the POST body for a new thread from the current selection.
+  // selectedAccountId === 'all' creates a unified "all inboxes" thread.
+  function newThreadBody() {
+    const llmId = Number(selectedLlmId);
+    if (!llmId) return null;
+    if (selectedAccountId === 'all') return { scope: 'all', llmId };
     const accountId = Number(selectedAccountId);
-    const llmId     = Number(selectedLlmId);
-    if (!accountId || !llmId) return;
-    const r = await api.post('/api/threads', { accountId, llmId });
+    if (!accountId) return null;
+    return { accountId, llmId };
+  }
+
+  async function newChat() {
+    const body = newThreadBody();
+    if (!body) return;
+    const r = await api.post('/api/threads', body);
     if (!r.ok) return;
     const t = await r.json();
     setCurrentThreadId(t.id);
@@ -192,10 +286,14 @@ export default function Chat() {
 
   async function switchThreadAccount(accountId) {
     setHeaderDropdown(null);
-    if (!currentThreadId) { setSelectedAccountId(String(accountId)); return; }
-    const r = await api.put(`/api/threads/${currentThreadId}`, { accountId: Number(accountId) });
+    const isAll = accountId === 'all';
+    if (!currentThreadId) { setSelectedAccountId(isAll ? 'all' : String(accountId)); return; }
+    const body = isAll ? { scope: 'all' } : { accountId: Number(accountId) };
+    const r = await api.put(`/api/threads/${currentThreadId}`, body);
     if (!r.ok) return;
-    setThreads(ts => ts.map(t => t.id === currentThreadId ? { ...t, account_id: Number(accountId) } : t));
+    setThreads(ts => ts.map(t => t.id === currentThreadId
+      ? { ...t, scope: isAll ? 'all' : 'account', account_id: isAll ? null : Number(accountId) }
+      : t));
   }
 
   async function switchModelOverride(model) {
@@ -220,17 +318,20 @@ export default function Chat() {
     if (sending) return;
     const message = (overrideText !== undefined ? overrideText : msgInput).trim();
     if (!message) return;
+    if (listening) recognitionRef.current?.stop();
 
     let threadId = currentThreadId;
     if (!threadId) {
-      const accountId = Number(selectedAccountId);
-      const llmId     = Number(selectedLlmId);
-      if (!accountId || !llmId) return;
-      const r = await api.post('/api/threads', { accountId, llmId });
+      const body = newThreadBody();
+      if (!body) return;
+      const r = await api.post('/api/threads', body);
       if (!r.ok) return;
       const t = await r.json();
       threadId = t.id;
       setCurrentThreadId(t.id);
+      // Bind this brand-new thread to the email being discussed, so re-opening
+      // the email later restores this same chat.
+      if (activeEmail) rememberEmailThread(emailKey(activeEmail), t.id);
       await loadThreads();
     }
 
@@ -242,8 +343,9 @@ export default function Chat() {
     setTypingTool('');
 
     cancelStreamRef.current = streamChat(threadId, message, {
+      context: activeEmail || undefined,
       onTool: (name) => setTypingTool(TOOL_LABELS[name] ?? ('⚙️ ' + name.replace(/_/g, ' '))),
-      onSendPreview: (email) => setPendingEmail(email),
+      onComposeDraft: (email) => openComposeWithDraft(email),
       onDone: async ({ reply, title }) => {
         setIsTyping(false);
         setMessages(m => [...m, { role: 'assistant', content: reply }]);
@@ -262,25 +364,29 @@ export default function Chat() {
     });
   }
 
-  async function sendEmailDirectly() {
-    if (!pendingEmail) return;
-    setSendingEmail(true); setSendEmailError('');
-    try {
-      const { accountId, ...emailFields } = pendingEmail;
-      const r = await api.post(`/api/accounts/${accountId}/send`, emailFields);
-      const d = await r.json();
-      if (!r.ok) { setSendEmailError(d.error ?? 'Failed to send email.'); return; }
-      setMessages(m => [...m, { role: 'assistant', content: `✓ Email sent to ${pendingEmail.to}.` }]);
-      setPendingEmail(null);
-    } catch { setSendEmailError('Network error. Please try again.'); }
-    finally { setSendingEmail(false); }
-  }
-
   const AI_BUSY_LABEL = { write: 'Writing…', proofread: 'Proofreading…', expand: 'Expanding…', shorten: 'Shortening…' };
 
   function openCompose() {
     setCompose({ to:'', cc:'', subject:'', body:'' });
     setComposeAccountId(selectedAccountId || (accounts[0] ? String(accounts[0].id) : ''));
+    setComposeError(''); setShowWritePrompt(false); setWritePrompt(''); setAiBusy('');
+    setPrevBody(null);
+    setComposeLlmId(selectedLlmId || (llmProviders[0] ? String(llmProviders[0].id) : ''));
+    setComposeModel('');
+    setComposeOpen(true);
+    setSidebarOpen(false);
+  }
+
+  // When the AI drafts an email, open it in the Compose modal (with its AI tools)
+  // pre-filled, instead of a separate confirm dialog.
+  function openComposeWithDraft(email) {
+    setCompose({
+      to:      email.to      ?? '',
+      cc:      email.cc      ?? '',
+      subject: email.subject ?? '',
+      body:    email.body    ?? '',
+    });
+    setComposeAccountId(email.accountId ? String(email.accountId) : (selectedAccountId || (accounts[0] ? String(accounts[0].id) : '')));
     setComposeError(''); setShowWritePrompt(false); setWritePrompt(''); setAiBusy('');
     setPrevBody(null);
     setComposeLlmId(selectedLlmId || (llmProviders[0] ? String(llmProviders[0].id) : ''));
@@ -419,6 +525,7 @@ export default function Chat() {
           {loading ? <div className="skeleton skel-select" /> : (
             <div className="side-select">
               <select value={selectedAccountId} onChange={e => setSelectedAccountId(e.target.value)}>
+                {accounts.length > 1 && <option value="all">🌐 All Inboxes</option>}
                 {accounts.map(a => (
                   <option key={a.id} value={a.id}>{a.label} — {a.imap_user}</option>
                 ))}
@@ -463,13 +570,14 @@ export default function Chat() {
             <div style={{ padding:10, fontSize:11, color:'rgba(255,255,255,0.3)' }}>No chats yet</div>
           ) : (
             threads.map((t) => {
-            const color = t.account_id ? getAcctColor(t.account_id) : '#94a3b8';
+            const isAll = t.scope === 'all';
+            const color = isAll ? '#6366f1' : (t.account_id ? getAcctColor(t.account_id) : '#94a3b8');
             const ai    = LLM_INFO[t.llm_provider] ?? {};
             const isConfirming = confirmDeleteThread === t.id;
             return (
               <div key={t.id} className={`thread-item ${t.id === currentThreadId ? 'active' : ''}`} onClick={() => !isConfirming && loadThread(t.id)}>
-                <span className="thread-dot" style={{ background: color }} />
-                <span className="thread-title">{t.title}</span>
+                <span className="thread-dot" style={{ background: color }} title={isAll ? 'All inboxes' : undefined} />
+                <span className="thread-title">{isAll ? '🌐 ' : ''}{t.title}</span>
                 {!isConfirming && ai.badge && <span className={`thread-ai-badge ${ai.cls ?? ''}`}>{ai.badge}</span>}
                 {isConfirming ? (
                   <div className="thread-confirm" onClick={e => e.stopPropagation()}>
@@ -501,6 +609,7 @@ export default function Chat() {
         onClose={() => setInboxOpen(false)}
         accounts={accounts}
         defaultAccountId={selectedAccountId}
+        onActiveEmailChange={setActiveEmail}
       />
 
       {/* Main */}
@@ -514,33 +623,49 @@ export default function Chat() {
             {currentThread && (
               <>
                 {/* Account switcher */}
+                {(() => {
+                  const isAll = currentThread.scope === 'all';
+                  const chipColor = isAll ? '#6366f1' : getAcctColor(currentThread.account_id);
+                  return (
                 <div className="header-chip-wrap">
                   <span
                     className="user-chip header-chip-btn"
-                    style={{ background: getAcctColor(currentThread.account_id) + '22', color: getAcctColor(currentThread.account_id), fontWeight: 600 }}
+                    style={{ background: chipColor + '22', color: chipColor, fontWeight: 600 }}
                     onClick={() => setHeaderDropdown(d => d === 'account' ? null : 'account')}
                     title="Switch mail account for this chat"
                   >
-                    {currentAcct?.label ?? 'Account'}
+                    {isAll ? '🌐 All Inboxes' : (currentAcct?.label ?? 'Account')}
                     <svg viewBox="0 0 10 6" style={{ width:8, height:8, marginLeft:4, fill:'currentColor', opacity:0.65 }}><path d="M0 0l5 6 5-6z"/></svg>
                   </span>
                   {headerDropdown === 'account' && (
                     <div className="header-dropdown">
                       <div className="header-dropdown-label">Switch Account</div>
+                      {accounts.length > 1 && (
+                        <div
+                          className={`header-dropdown-item ${isAll ? 'selected' : ''}`}
+                          onClick={() => switchThreadAccount('all')}
+                        >
+                          <span className="hdi-dot" style={{ background: '#6366f1' }} />
+                          <span>🌐 All Inboxes</span>
+                          {isAll && <span className="hdi-check">✓</span>}
+                        </div>
+                      )}
                       {accounts.map((a, i) => (
                         <div
                           key={a.id}
-                          className={`header-dropdown-item ${a.id === currentThread.account_id ? 'selected' : ''}`}
+                          className={`header-dropdown-item ${!isAll && a.id === currentThread.account_id ? 'selected' : ''}`}
                           onClick={() => switchThreadAccount(a.id)}
                         >
                           <span className="hdi-dot" style={{ background: acctColor(i) }} />
                           <span>{a.label}</span>
-                          {a.id === currentThread.account_id && <span className="hdi-check">✓</span>}
+                          {!isAll && a.id === currentThread.account_id && <span className="hdi-check">✓</span>}
                         </div>
                       ))}
                     </div>
                   )}
                 </div>
+                  );
+                })()}
 
                 {/* AI provider switcher */}
                 <div className="header-chip-wrap">
@@ -633,18 +758,26 @@ export default function Chat() {
         </div>
 
         <div className="messages" ref={messagesRef}>
-          {messages.length === 0 && !isTyping && (
+          {messages.length === 0 && !isTyping && (() => {
+            const allMode = currentThread ? currentThread.scope === 'all' : selectedAccountId === 'all';
+            const suggestions = allMode
+              ? ['Give me urgent emails from all inboxes','Show unread across every account','Summarize what needs my attention today','Any invoices in any inbox?']
+              : ['Show my unread emails','Search for emails from my boss','How many unread emails do I have?','List my email folders'];
+            return (
             <div className="empty-state">
               <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
-              <h3>What can I help you with?</h3>
-              <p>Ask me to read your emails, search for messages, send a reply, or manage your inbox.</p>
+              <h3>{allMode ? '🌐 All Inboxes' : 'What can I help you with?'}</h3>
+              <p>{allMode
+                ? 'Ask across every connected account at once — search, summarize, and triage all your mail together.'
+                : 'Ask me to read your emails, search for messages, send a reply, or manage your inbox.'}</p>
               <div className="suggestions">
-                {['Show my unread emails','Search for emails from my boss','How many unread emails do I have?','List my email folders'].map(s => (
+                {suggestions.map(s => (
                   <div key={s} className="suggestion" onClick={() => sendMessage(s)}>{s}</div>
                 ))}
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {messages.map((m, i) => (
             <div key={i} className={`message ${m.role}`}>
@@ -672,18 +805,56 @@ export default function Chat() {
         </div>
 
         <div className="input-area">
+          {activeEmail && (
+            <div className="chat-context-bar">
+              <div className="ccb-info">
+                <span className="ccb-icon">📧</span>
+                <div className="ccb-text">
+                  <span className="ccb-label">Talking about this email</span>
+                  <span className="ccb-sub" title={`${activeEmail.subject || '(no subject)'} — ${activeEmail.from || ''}`}>
+                    {activeEmail.subject || '(no subject)'} · {senderName(activeEmail.from)}
+                    {activeEmail.account ? ` · ${activeEmail.account}` : ''}
+                  </span>
+                </div>
+                <button className="ccb-close" onClick={() => setActiveEmail(null)} title="Stop using this email as context">×</button>
+              </div>
+              <div className="ccb-actions">
+                {[
+                  { l: 'Summarize',      m: 'Summarize this email.' },
+                  { l: 'Draft a reply',  m: 'Draft a reply to this email.' },
+                  { l: 'Who sent this?', m: 'Who sent this email and what are they asking for?' },
+                ].map(a => (
+                  <button key={a.l} className="ccb-action" onClick={() => sendMessage(a.m)} disabled={sending}>{a.l}</button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="input-row">
             <textarea
               ref={textareaRef}
               className="msg-input"
               rows={1}
-              placeholder="Ask about your emails…"
+              placeholder={listening ? 'Listening… speak now' : (activeEmail ? 'Ask about this email…' : 'Ask about your emails…')}
               value={msgInput}
               onChange={e => setMsgInput(e.target.value)}
               onKeyDown={handleKeyDown}
               onInput={autoResize}
               disabled={sending}
             />
+            {speechSupported && (
+              <button
+                className={`btn-mic${listening ? ' listening' : ''}`}
+                onClick={toggleVoiceInput}
+                disabled={sending}
+                title={listening ? 'Stop dictation' : 'Speak your prompt'}
+                aria-label={listening ? 'Stop dictation' : 'Start voice input'}
+              >
+                <svg viewBox="0 0 24 24">
+                  <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3z"/>
+                  <path d="M17 11a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/>
+                </svg>
+              </button>
+            )}
             {sending ? (
               <button className="btn-stop" onClick={stopStreaming} title="Stop generating">
                 <svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
@@ -828,60 +999,6 @@ export default function Chat() {
         </div>
       )}
 
-      {/* Send Confirmation Modal */}
-      {pendingEmail && (
-        <div className="modal-overlay open" onClick={e => { if (e.target.classList.contains('modal-overlay')) { setPendingEmail(null); setSendEmailError(''); } }}>
-          <div className="settings-panel" style={{ width: 560 }}>
-            <div className="settings-head">
-              <h3>📤 Review Email Before Sending</h3>
-              <button className="settings-close" onClick={() => { setPendingEmail(null); setSendEmailError(''); }}>×</button>
-            </div>
-            <div className="settings-body" style={{ padding: '20px 22px 22px' }}>
-              <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 18 }}>
-                Review and edit this email before it's sent. Nothing has been sent yet.
-              </p>
-              <div className="field">
-                <label>To</label>
-                <input type="text" value={pendingEmail.to ?? ''} onChange={e => setPendingEmail(p => ({ ...p, to: e.target.value }))} />
-              </div>
-              {pendingEmail.cc !== undefined && (
-                <div className="field">
-                  <label>CC</label>
-                  <input type="text" value={pendingEmail.cc ?? ''} onChange={e => setPendingEmail(p => ({ ...p, cc: e.target.value }))} placeholder="optional" />
-                </div>
-              )}
-              {pendingEmail.bcc !== undefined && (
-                <div className="field">
-                  <label>BCC</label>
-                  <input type="text" value={pendingEmail.bcc ?? ''} onChange={e => setPendingEmail(p => ({ ...p, bcc: e.target.value }))} placeholder="optional" />
-                </div>
-              )}
-              <div className="field">
-                <label>Subject</label>
-                <input type="text" value={pendingEmail.subject ?? ''} onChange={e => setPendingEmail(p => ({ ...p, subject: e.target.value }))} />
-              </div>
-              <div className="field">
-                <label>Body</label>
-                <textarea
-                  value={pendingEmail.body ?? ''}
-                  onChange={e => setPendingEmail(p => ({ ...p, body: e.target.value }))}
-                  rows={10}
-                  style={{ width:'100%', padding:'10px 14px', border:'1.5px solid var(--border)', borderRadius:8, fontSize:13, fontFamily:'inherit', resize:'vertical', outline:'none', lineHeight:1.6 }}
-                  onFocus={e => e.target.style.borderColor = 'var(--blue)'}
-                  onBlur={e => e.target.style.borderColor = 'var(--border)'}
-                />
-              </div>
-              {sendEmailError && <div className="alert alert-error show">{sendEmailError}</div>}
-              <div style={{ display:'flex', gap:10, justifyContent:'flex-end', marginTop: 4 }}>
-                <button className="btn btn-secondary" onClick={() => { setPendingEmail(null); setSendEmailError(''); }}>Cancel</button>
-                <button className="btn btn-primary" onClick={sendEmailDirectly} disabled={sendingEmail}>
-                  {sendingEmail ? <><span className="spinner" /> Sending…</> : '📤 Send Email'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Settings Modal */}
       {settingsOpen && (

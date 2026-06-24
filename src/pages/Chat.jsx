@@ -88,6 +88,9 @@ export default function Chat() {
   const [llmErr,  setLlmErr]  = useState('');
   const [savingAcct, setSavingAcct] = useState(false);
   const [savingLlm,  setSavingLlm]  = useState(false);
+  const [editAcctId, setEditAcctId]       = useState(null);  // account being edited
+  const [editAcct, setEditAcct]           = useState({ label:'', imapHost:'', imapPort:'993', imapUser:'', imapPass:'', smtpHost:'', smtpPort:'587' });
+  const [savingEditAcct, setSavingEditAcct] = useState(false);
 
   const [headerDropdown, setHeaderDropdown] = useState(null); // 'provider' | 'account' | 'model' | null
   const [confirmDeleteThread, setConfirmDeleteThread] = useState(null);
@@ -478,6 +481,50 @@ export default function Chat() {
     await api.del(`/api/accounts/${id}`);
     const accts = await api.get('/api/accounts').then(r => r.json());
     setAccounts(accts);
+  }
+
+  function startEditAccount(acct) {
+    setEditAcctId(acct.id);
+    setEditAcct({
+      label:    acct.label || '',
+      imapHost: acct.imap_host || '',
+      imapPort: String(acct.imap_port || '993'),
+      imapUser: acct.imap_user || '',
+      imapPass: '',                                  // blank = keep current password
+      smtpHost: acct.smtp_host || '',
+      smtpPort: String(acct.smtp_port || '587'),
+    });
+    setShowAddAcct(false);
+    setAcctErr('');
+  }
+
+  function cancelEditAccount() {
+    setEditAcctId(null);
+    setAcctErr('');
+  }
+
+  async function submitEditAccount(id) {
+    const { label, imapHost, imapUser, smtpHost } = editAcct;
+    if (!label.trim()) { setAcctErr('Account name is required.'); return; }
+    if (!imapHost || !imapUser || !smtpHost) { setAcctErr('Mail server, email, and SMTP host are required.'); return; }
+    setSavingEditAcct(true); setAcctErr('');
+    try {
+      const body = {
+        label: label.trim(),
+        imapHost, imapUser,
+        imapPort: Number(editAcct.imapPort),
+        smtpHost: smtpHost || imapHost,
+        smtpPort: Number(editAcct.smtpPort),
+      };
+      if (editAcct.imapPass) body.imapPass = editAcct.imapPass;  // omit to keep current password
+      const r = await api.put(`/api/accounts/${id}`, body);
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setAcctErr(d.error ?? 'Failed to update account.'); return; }
+      const accts = await api.get('/api/accounts').then(r => r.json());
+      setAccounts(accts);
+      cancelEditAccount();
+    } catch { setAcctErr('Network error.'); }
+    finally { setSavingEditAcct(false); }
   }
 
   async function submitAddLlm() {
@@ -1017,14 +1064,40 @@ export default function Chat() {
                 <>
                   {accounts.length === 0 && <p style={{ fontSize:13, color:'var(--muted)', marginBottom:8 }}>No accounts yet.</p>}
                   {accounts.map((a, i) => (
-                    <div key={a.id} className="acct-card">
-                      <span className="acct-dot" style={{ background: acctColor(i) }} />
-                      <div className="acct-info">
-                        <div className="acct-label">{a.label}</div>
-                        <div className="acct-sub">{a.imap_user}</div>
+                    editAcctId === a.id ? (
+                      <div key={a.id} className="add-form">
+                        <div className="field"><label>Account Name</label><input type="text" placeholder="e.g. Business" value={editAcct.label} onChange={e => setEditAcct(v => ({...v, label:e.target.value}))} /></div>
+                        <div className="sec">IMAP — Incoming Mail</div>
+                        <div className="row-2" style={{ gridTemplateColumns:'1fr 85px' }}>
+                          <div className="field"><label>Mail Server</label><input type="text" placeholder="mail.example.com" value={editAcct.imapHost} onChange={e => setEditAcct(v => ({...v, imapHost:e.target.value}))} /></div>
+                          <div className="field"><label>Port</label><input type="number" value={editAcct.imapPort} onChange={e => setEditAcct(v => ({...v, imapPort:e.target.value}))} /></div>
+                        </div>
+                        <div className="field"><label>Email</label><input type="email" placeholder="you@example.com" value={editAcct.imapUser} onChange={e => setEditAcct(v => ({...v, imapUser:e.target.value}))} /></div>
+                        <div className="field"><label>Password <span className="hint">leave blank to keep current</span></label><input type="password" placeholder="••••••••" value={editAcct.imapPass} onChange={e => setEditAcct(v => ({...v, imapPass:e.target.value}))} /></div>
+                        <div className="sec">SMTP — Outgoing Mail</div>
+                        <div className="row-2" style={{ gridTemplateColumns:'1fr 85px' }}>
+                          <div className="field"><label>SMTP Host</label><input type="text" placeholder="mail.example.com" value={editAcct.smtpHost} onChange={e => setEditAcct(v => ({...v, smtpHost:e.target.value}))} /></div>
+                          <div className="field"><label>Port</label><input type="number" value={editAcct.smtpPort} onChange={e => setEditAcct(v => ({...v, smtpPort:e.target.value}))} /></div>
+                        </div>
+                        {acctErr && <div className="alert alert-error show">{acctErr}</div>}
+                        <div className="add-form-actions">
+                          <button className="btn btn-secondary btn-sm" onClick={cancelEditAccount}>Cancel</button>
+                          <button className="btn btn-primary btn-sm" onClick={() => submitEditAccount(a.id)} disabled={savingEditAcct}>
+                            {savingEditAcct ? <><span className="spinner" /> Saving…</> : 'Save Changes'}
+                          </button>
+                        </div>
                       </div>
-                      <button className="acct-del" onClick={() => deleteAccount(a.id, a.label)}>Delete</button>
-                    </div>
+                    ) : (
+                      <div key={a.id} className="acct-card">
+                        <span className="acct-dot" style={{ background: acctColor(i) }} />
+                        <div className="acct-info">
+                          <div className="acct-label">{a.label}</div>
+                          <div className="acct-sub">{a.imap_user}</div>
+                        </div>
+                        <button className="acct-edit" onClick={() => startEditAccount(a)}>Edit</button>
+                        <button className="acct-del" onClick={() => deleteAccount(a.id, a.label)}>Delete</button>
+                      </div>
+                    )
                   ))}
                   {!showAddAcct && <button className="add-toggle" onClick={() => setShowAddAcct(true)}>+ Add Mail Account</button>}
                   {showAddAcct && (

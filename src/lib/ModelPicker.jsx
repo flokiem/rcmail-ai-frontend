@@ -22,6 +22,12 @@ export const PROVIDER_MODELS = {
     { id: 'sonar-reasoning-pro', name: 'Sonar Reasoning Pro', desc: 'Deep reasoning' },
     { id: 'sonar-reasoning',     name: 'Sonar Reasoning',     desc: 'Reasoning · Fast' },
   ],
+  gemini: [
+    { id: 'gemini-2.0-flash',      name: 'Gemini 2.0 Flash',      desc: 'Latest · Recommended' },
+    { id: 'gemini-2.5-flash',      name: 'Gemini 2.5 Flash',      desc: 'Fast · Capable' },
+    { id: 'gemini-2.5-pro',        name: 'Gemini 2.5 Pro',        desc: 'Most capable' },
+    { id: 'gemini-1.5-flash',      name: 'Gemini 1.5 Flash',      desc: 'Fast · Affordable' },
+  ],
 };
 
 export default function ModelPicker({ provider, value, onChange }) {

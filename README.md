@@ -74,6 +74,7 @@ All user-configured — users supply their own API keys, stored in the backend.
 | **OpenAI** | GPT-4o |
 | **Groq** | LLaMA models |
 | **Perplexity** | |
+| **Gemini** (Google) | Gemini 2.0/2.5 Flash & Pro — via OpenAI-compatible API |
 
 Threads are per-account + per-LLM-provider and support per-thread model overrides.
 

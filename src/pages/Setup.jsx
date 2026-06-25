@@ -89,7 +89,7 @@ export default function Setup() {
     finally { setLoading(false); }
   }
 
-  const modelPlaceholders = { claude: 'e.g. claude-sonnet-4-6', openai: 'e.g. gpt-4o', groq: 'e.g. llama-3.3-70b-versatile', perplexity: 'e.g. sonar-pro' };
+  const modelPlaceholders = { claude: 'e.g. claude-sonnet-4-6', openai: 'e.g. gpt-4o', groq: 'e.g. llama-3.3-70b-versatile', perplexity: 'e.g. sonar-pro', gemini: 'e.g. gemini-2.0-flash' };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 16px 60px' }}>
@@ -202,6 +202,7 @@ export default function Setup() {
                   { id:'openai',     name:'GPT-4o',      desc:'OpenAI · Fast & affordable' },
                   { id:'groq',       name:'Groq ⚡',     desc:'Groq · Ultra-fast LLaMA' },
                   { id:'perplexity', name:'Perplexity',  desc:'Search-augmented AI · All models' },
+                  { id:'gemini',     name:'Gemini ✦',    desc:'Google · Fast & capable' },
                 ].map(p => (
                   <div key={p.id} className={`provider-card ${llm.provider === p.id ? 'selected' : ''}`} onClick={() => setL('provider', p.id)}>
                     <div className="name">{p.name}</div>

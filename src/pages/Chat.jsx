@@ -10,6 +10,7 @@ const LLM_INFO = {
   openai:      { label: 'GPT-4o',      badge: 'G',  cls: 'ai-openai'      },
   groq:        { label: 'Groq',        badge: '⚡', cls: 'ai-groq'        },
   perplexity:  { label: 'Perplexity',  badge: 'P',  cls: 'ai-perplexity'  },
+  gemini:      { label: 'Gemini',      badge: '✦',  cls: 'ai-gemini'      },
 };
 const TOOL_LABELS = {
   list_folders:     '📂 Listing folders',
@@ -550,7 +551,7 @@ export default function Chat() {
     setLlmProviders(llms);
   }
 
-  const modelPh = { claude:'e.g. claude-sonnet-4-6', openai:'e.g. gpt-4o', groq:'e.g. llama-3.3-70b-versatile', perplexity:'e.g. sonar-pro' };
+  const modelPh = { claude:'e.g. claude-sonnet-4-6', openai:'e.g. gpt-4o', groq:'e.g. llama-3.3-70b-versatile', perplexity:'e.g. sonar-pro', gemini:'e.g. gemini-2.0-flash' };
 
   const currentThread = threads.find(t => t.id === currentThreadId);
   const currentAcct   = accounts.find(a => a.id === currentThread?.account_id);
@@ -1152,6 +1153,7 @@ export default function Chat() {
                           { id:'openai',     name:'GPT-4o',      desc:'OpenAI' },
                           { id:'groq',       name:'Groq ⚡',     desc:'Ultra-fast LLaMA' },
                           { id:'perplexity', name:'Perplexity',  desc:'Search-augmented AI' },
+                          { id:'gemini',     name:'Gemini ✦',    desc:'Google' },
                         ].map(p => (
                           <div key={p.id} className={`provider-card ${newLlm.provider === p.id ? 'selected' : ''}`} onClick={() => setNewLlm(l => ({...l, provider:p.id}))}>
                             <div className="name">{p.name}</div>

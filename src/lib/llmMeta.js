@@ -15,7 +15,7 @@ export const llmGlyph = (provider) => LLM_META[provider]?.glyph ?? '◆';
 // Backend default model per provider (used when no override / saved model).
 export const DEFAULT_MODELS = {
   claude: 'claude-sonnet-4-6', openai: 'gpt-4o', groq: 'llama-3.3-70b-versatile',
-  perplexity: 'sonar-pro', gemini: 'gemini-2.0-flash',
+  perplexity: 'sonar-pro', gemini: 'gemini-2.5-flash',
 };
 
 // Friendly display name for the model actually in effect.

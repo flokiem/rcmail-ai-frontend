@@ -1,0 +1,73 @@
+/* ============================================================================
+   Floki design tokens — ported from the v5 design.
+   Scoped to `.floki-app` (NOT :root). The auth pages opt in via the
+   `.floki-app fk-auth` wrapper (see features/auth/AuthShell.jsx). Custom-theme
+   overrides are applied as inline CSS variables on the .floki-app element
+   (see lib/theme.js).
+   ========================================================================== */
+
+.floki-app {
+  /* Parchment — default theme */
+  --bg:#F4EEE2; --ink:#1B2130; --ink-hover:#2A3142; --on-ink:#F4EEE2;
+  --heading:#1B2130; --text:#3C414E; --text2:#5C6171; --muted:#928B76; --faint:#A8A18C;
+  --rail:#EFE7D8; --rail-hover:#E7DECB; --panel:#FBF7EE; --card:#FFFFFF; --soft:#F1EADB; --soft2:#EFE7D7; --line:#E7DFD0; --line2:#EAE1CF;
+  --center:#F7F7F6; --center-line:#ECECEB; --av:#EDEDEC; --av-line:#E2E2E1;
+  --accent:#2E5C8A; --accent-hover:#26517B; --accent-2:#5C8CBF; --accent-bg:#E9F0F7; --accent-line:#DCE7F1;
+  --accent2:#8A5A3C; --accent2-hover:#7A4F33; --accent2-bg:#F2E2D3; --accent2-line:#EAD9C6;
+
+  --mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.floki-app[data-theme="arctic"] {
+  --bg:#F2F5F9; --ink:#1B2433; --ink-hover:#2A3547; --on-ink:#F2F5F9;
+  --heading:#16202E; --text:#39434F; --text2:#5A6573; --muted:#7E8A99; --faint:#A7B1BE;
+  --rail:#E9EEF4; --rail-hover:#DFE7F0; --panel:#F5F8FB; --card:#FFFFFF; --soft:#EAF0F6; --soft2:#E4ECF3; --line:#DCE3EC; --line2:#E1E7EF;
+  --center:#F6F7F9; --center-line:#E8EBEF; --av:#EBEEF2; --av-line:#DFE4EA;
+  --accent:#0F6CBD; --accent-hover:#0C5A9E; --accent-2:#4C93D6; --accent-bg:#E6F0FA; --accent-line:#CFE2F4;
+  --accent2:#0E7C86; --accent2-hover:#0A646C; --accent2-bg:#E0F2F3; --accent2-line:#C5E6E8;
+}
+
+.floki-app[data-theme="graphite"] {
+  --bg:#15171E; --ink:#5B63F5; --ink-hover:#6E75F7; --on-ink:#FFFFFF;
+  --heading:#ECEEF5; --text:#C4C8D4; --text2:#9AA0B0; --muted:#787F90; --faint:#565D6E;
+  --rail:#1A1D26; --rail-hover:#232735; --panel:#181B23; --card:#1F2330; --soft:#262B39; --soft2:#2C3142; --line:#2A2F3D; --line2:#333A4A;
+  --center:#181B22; --center-line:#262B39; --av:#262B39; --av-line:#333A4A;
+  --accent:#7C82FF; --accent-hover:#9499FF; --accent-2:#A5A9FF; --accent-bg:#23263A; --accent-line:#343A56;
+  --accent2:#E0A35C; --accent2-hover:#ECB877; --accent2-bg:#2E2719; --accent2-line:#473A24;
+}
+
+.floki-app[data-theme="evergreen"] {
+  --bg:#F3F6F1; --ink:#1F2A24; --ink-hover:#2C3A31; --on-ink:#F3F6F1;
+  --heading:#19241D; --text:#3A453D; --text2:#586357; --muted:#7C8878; --faint:#A8B2A2;
+  --rail:#E9EFE6; --rail-hover:#DFE7DB; --panel:#F5F8F3; --card:#FFFFFF; --soft:#EBF1E7; --soft2:#E3EBDE; --line:#DCE4D7; --line2:#E1E8DD;
+  --center:#F6F7F5; --center-line:#E8EBE6; --av:#EBEEEA; --av-line:#DFE4DC;
+  --accent:#2F7D5B; --accent-hover:#26684B; --accent-2:#57A07E; --accent-bg:#E4F1EA; --accent-line:#CBE5D6;
+  --accent2:#B5763A; --accent2-hover:#9A6230; --accent2-bg:#F4E9DC; --accent2-line:#E8D6C0;
+}
+
+.floki-app[data-theme="plum"] {
+  --bg:#F5F4FA; --ink:#221F33; --ink-hover:#2F2B45; --on-ink:#F5F4FA;
+  --heading:#1E1B2E; --text:#403B52; --text2:#5E5873; --muted:#847E99; --faint:#ADA7BE;
+  --rail:#ECEAF5; --rail-hover:#E2DEF1; --panel:#F7F6FC; --card:#FFFFFF; --soft:#EEEBF7; --soft2:#E6E2F2; --line:#E0DCEC; --line2:#E6E2F0;
+  --center:#F7F6FA; --center-line:#EAE7F1; --av:#EDEAF5; --av-line:#E1DCEE;
+  --accent:#6D4AFF; --accent-hover:#5A3AE0; --accent-2:#9277FF; --accent-bg:#ECE7FB; --accent-line:#DAD0F7;
+  --accent2:#C2557E; --accent2-hover:#A6446A; --accent2-bg:#F8E6EE; --accent2-line:#EFD2DF;
+}
+
+.floki-app[data-theme="rose"] {
+  --bg:#F7F1EC; --ink:#2A2320; --ink-hover:#3A302C; --on-ink:#F7F1EC;
+  --heading:#241D1A; --text:#473E39; --text2:#665B54; --muted:#8C7F76; --faint:#B8ABA0;
+  --rail:#F0E7DF; --rail-hover:#E8DCD2; --panel:#FAF4EF; --card:#FFFFFF; --soft:#F3EAE2; --soft2:#EBE0D6; --line:#E7DBD0; --line2:#EDE2D8;
+  --center:#F7F6F5; --center-line:#ECE8E4; --av:#EEEAE6; --av-line:#E2DCD6;
+  --accent:#C8553D; --accent-hover:#AC4632; --accent-2:#DC7B66; --accent-bg:#F8E7E1; --accent-line:#F0D3C9;
+  --accent2:#2E6F8A; --accent2-hover:#255A70; --accent2-bg:#E2EEF3; --accent2-line:#C9E0E8;
+}
+
+/* keyframes used across the app */
+@keyframes flokiViewIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+@keyframes flokiRise   { 0% { opacity:0; transform:translateY(6px); } 100% { opacity:1; transform:translateY(0); } }
+@keyframes flokiPop    { 0% { transform:scale(.5); opacity:0; } 65% { transform:scale(1.12); } 100% { transform:scale(1); opacity:1; } }
+@keyframes flokiPulse  { 0%,100% { opacity:1; } 50% { opacity:.62; } }
+@keyframes flokiType   { 0%,60%,100% { transform:translateY(0); opacity:.4; } 30% { transform:translateY(-4px); opacity:1; } }
+@keyframes flokiSail   { 0%,100% { transform:translateY(0) rotate(0deg); } 50% { transform:translateY(-2px) rotate(.6deg); } }
+@keyframes flokiSpin   { to { transform:rotate(360deg); } }

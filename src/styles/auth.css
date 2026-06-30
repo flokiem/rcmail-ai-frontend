@@ -1,0 +1,112 @@
+/* ============================================================================
+   Auth pages (Login / Setup / Reset-Password) — themed to the v5 design.
+   Uses the .floki-app theme tokens over a dark cosmic backdrop. This replaces
+   everything the old src/index.css used to provide for these pages.
+   ========================================================================== */
+
+.fk-auth {
+  position: relative; height: 100vh; width: 100%;
+  display: flex; align-items: center; justify-content: center;
+  padding: 32px 16px; overflow: auto;
+  background: radial-gradient(1120px 660px at 50% -6%, #1c2945, #10141f 56%, #0b0d13);
+}
+.fk-auth-grid {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    linear-gradient(rgba(125,155,205,.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(125,155,205,.05) 1px, transparent 1px);
+  background-size: 48px 48px;
+  -webkit-mask: radial-gradient(840px 580px at 50% 40%, #000, transparent 80%);
+          mask: radial-gradient(840px 580px at 50% 40%, #000, transparent 80%);
+}
+.fk-auth-glow {
+  position: absolute; left: 50%; top: 42%; transform: translate(-50%,-50%);
+  width: 900px; height: 600px; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(46,92,138,.40), rgba(46,92,138,0) 72%);
+  filter: blur(30px); pointer-events: none; animation: flokiPulse 7s ease-in-out infinite;
+}
+.fk-auth-inner { position: relative; z-index: 1; width: 100%; max-width: 420px; display: flex; flex-direction: column; align-items: center; margin: auto; }
+.fk-auth-inner.wide { max-width: 480px; }
+
+.fk-auth-head { text-align: center; margin-bottom: 26px; }
+.fk-auth-logo { display: inline-flex; align-items: center; gap: 11px; }
+.fk-auth-logo-mark {
+  width: 44px; height: 44px; border-radius: 10px; overflow: hidden;
+  background: var(--accent2-bg); border: 1px solid var(--accent2-line);
+  box-shadow: 0 0 0 1px rgba(46,92,138,.2), 0 0 20px -2px rgba(46,92,138,.5);
+  animation: flokiSail 6s ease-in-out infinite;
+}
+.fk-auth-logo-mark img { width: 44px; height: 44px; object-fit: cover; display: block; }
+.fk-auth-logo-text { font-size: 22px; font-weight: 700; letter-spacing: -.02em; color: #F4EEE2; }
+.fk-auth-tagline { color: #9fb0c9; font-size: 14px; margin-top: 10px; }
+
+.fk-auth-card {
+  width: 100%; background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 30px 80px -24px rgba(0,0,0,.6); overflow: hidden;
+  animation: flokiRise .3s ease both;
+}
+.fk-auth-card-body { padding: 28px; }
+
+/* Tabs */
+.fk-auth-tabs { display: flex; gap: 4px; background: var(--soft); border: 1px solid var(--line); border-radius: 9px; padding: 4px; margin-bottom: 20px; }
+.fk-auth-tab { flex: 1; text-align: center; padding: 9px 0; font-size: 13.5px; font-weight: 600; border-radius: 6px; cursor: pointer; color: var(--text2); }
+.fk-auth-tab.active { background: var(--card); color: var(--heading); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+
+/* Form fields (scoped to the card) */
+.fk-auth-card .field { margin-bottom: 16px; }
+.fk-auth-card label { display: block; font-size: 13px; font-weight: 600; color: var(--heading); margin-bottom: 6px; }
+.fk-auth-card label .hint { font-weight: 400; color: var(--muted); margin-left: 4px; }
+.fk-auth-card input, .fk-auth-card select {
+  width: 100%; padding: 11px 13px; border: 1px solid var(--line); border-radius: 8px;
+  font-size: 14px; font-family: inherit; color: var(--heading); background: var(--bg); outline: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.fk-auth-card input:focus, .fk-auth-card select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-bg); }
+.fk-auth-card input::placeholder { color: var(--faint); }
+.fk-auth-row-2 { display: grid; grid-template-columns: 1fr 96px; gap: 12px; }
+
+/* Buttons */
+.fk-auth-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 18px; border: none; border-radius: 9px; font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer; transition: background .15s ease, opacity .15s ease; }
+.fk-auth-btn:disabled { opacity: .6; cursor: not-allowed; }
+.fk-auth-btn-primary { background: var(--accent); color: #fff; }
+.fk-auth-btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.fk-auth-btn-secondary { background: var(--soft); color: var(--heading); border: 1px solid var(--line); }
+.fk-auth-btn-secondary:hover:not(:disabled) { background: var(--rail-hover); }
+.fk-auth-btn-full { width: 100%; }
+.fk-auth-link { background: none; border: none; color: var(--accent); font-size: 13px; cursor: pointer; font-family: inherit; padding: 0; }
+.fk-auth-link:hover { color: var(--accent-hover); }
+.fk-auth-center { text-align: center; margin-top: 14px; }
+
+/* Alerts */
+.fk-auth-alert { padding: 11px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
+.fk-auth-alert-error { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+.fk-auth-alert-success { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
+
+/* Spinner */
+.fk-spinner { width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.4); border-top-color: #fff; border-radius: 50%; animation: flokiSpin .7s linear infinite; flex: none; }
+.fk-spinner-dark { border: 2px solid var(--line); border-top-color: var(--accent); }
+
+/* Reset-success / heading helpers */
+.fk-auth-h { font-size: 17px; font-weight: 700; color: var(--heading); margin-bottom: 6px; }
+.fk-auth-p { font-size: 13px; color: var(--muted); line-height: 1.5; }
+.fk-auth-success-mark { font-size: 40px; color: var(--accent); text-align: center; margin-bottom: 12px; }
+
+/* ---- Setup wizard ---- */
+.fk-steps { display: flex; align-items: center; gap: 18px; margin-bottom: 22px; }
+.fk-step { display: flex; align-items: center; gap: 8px; }
+.fk-step-num { width: 26px; height: 26px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: var(--soft); color: var(--muted); border: 1px solid var(--line); flex: none; }
+.fk-step.active .fk-step-num { background: var(--accent); color: #fff; border-color: var(--accent); }
+.fk-step.done .fk-step-num { background: var(--accent-bg); color: var(--accent); border-color: var(--accent-line); }
+.fk-step-label { font-size: 12.5px; font-weight: 600; color: var(--text2); }
+.fk-step.active .fk-step-label { color: var(--heading); }
+.fk-section-title { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; color: var(--accent2); font-weight: 600; margin: 6px 0 10px; text-transform: uppercase; }
+.fk-divider { height: 1px; background: var(--line); margin: 18px 0; }
+.fk-optional-toggle { display: flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--text2); cursor: pointer; }
+.fk-provider-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px; }
+.fk-provider-card { border: 1px solid var(--line); border-radius: 9px; padding: 12px; cursor: pointer; background: var(--card); transition: border-color .15s ease, background .15s ease; }
+.fk-provider-card:hover { border-color: var(--accent-line); }
+.fk-provider-card.selected { border-color: var(--accent); background: var(--accent-bg); }
+.fk-provider-card .name { font-size: 13.5px; font-weight: 700; color: var(--heading); }
+.fk-provider-card .desc { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.fk-step-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
+.fk-step-actions .fk-auth-btn-primary { flex: 1; }

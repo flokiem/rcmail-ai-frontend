@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, setToken, getToken } from '../lib/api.js';
+import AuthShell from '../features/auth/AuthShell.jsx';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -22,10 +23,8 @@ export default function Login() {
   useEffect(() => {
     const token = getToken();
     if (!token) return;
-    api.get('/api/auth/me').then(r => {
-      if (r.ok) redirect();
-    }).catch(() => {});
-  }, []);
+    api.get('/api/auth/me').then(r => { if (r.ok) redirect(); }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function redirect() {
     const r = await api.get('/api/setup/status');
@@ -94,27 +93,26 @@ export default function Login() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 16px' }}>
-      <div style={{ textAlign: 'center', marginBottom: 32 }}>
-        <div className="page-logo" style={{ justifyContent: 'center' }}>
-          <img src="/flokilogo.PNG" alt="Floki" className="logo-img" />
-          <span className="logo-text">Floki Mail</span>
+    <AuthShell>
+      <div className="fk-auth-head">
+        <div className="fk-auth-logo">
+          <span className="fk-auth-logo-mark"><img src="/flokilogo.PNG" alt="Floki" /></span>
+          <span className="fk-auth-logo-text">Floki Mail</span>
         </div>
-        <p style={{ color: 'var(--muted)', fontSize: 15, marginTop: 8 }}>Your AI-powered email assistant</p>
+        <p className="fk-auth-tagline">Your AI-powered email assistant</p>
       </div>
 
-      <div className="card" style={{ width: '100%', maxWidth: 420 }}>
-        <div className="card-body">
-
+      <div className="fk-auth-card">
+        <div className="fk-auth-card-body">
           {tab !== 'forgot' && (
-            <div className="tabs">
-              <div className={`tab ${tab === 'login' ? 'active' : ''}`} onClick={() => switchTab('login')}>Sign In</div>
-              <div className={`tab ${tab === 'register' ? 'active' : ''}`} onClick={() => switchTab('register')}>Create Account</div>
+            <div className="fk-auth-tabs">
+              <div className={`fk-auth-tab ${tab === 'login' ? 'active' : ''}`} onClick={() => switchTab('login')}>Sign In</div>
+              <div className={`fk-auth-tab ${tab === 'register' ? 'active' : ''}`} onClick={() => switchTab('register')}>Create Account</div>
             </div>
           )}
 
-          {error   && <div className="alert alert-error show">{error}</div>}
-          {success && <div className="alert alert-success show">{success}</div>}
+          {error   && <div className="fk-auth-alert fk-auth-alert-error">{error}</div>}
+          {success && <div className="fk-auth-alert fk-auth-alert-success">{success}</div>}
 
           {tab === 'login' && (
             <form onSubmit={doLogin}>
@@ -126,14 +124,12 @@ export default function Login() {
                 <label>Password</label>
                 <input type="password" placeholder="Your password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} autoComplete="current-password" />
               </div>
-              <button className="btn btn-primary btn-full" type="submit" disabled={loading}>
-                {loading && <span className="spinner" />}
+              <button className="fk-auth-btn fk-auth-btn-primary fk-auth-btn-full" type="submit" disabled={loading}>
+                {loading && <span className="fk-spinner" />}
                 {loading ? 'Please wait…' : 'Sign In'}
               </button>
-              <div style={{ textAlign: 'center', marginTop: 14 }}>
-                <button type="button" onClick={() => switchTab('forgot')} style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: 13, cursor: 'pointer' }}>
-                  Forgot your password?
-                </button>
+              <div className="fk-auth-center">
+                <button type="button" className="fk-auth-link" onClick={() => switchTab('forgot')}>Forgot your password?</button>
               </div>
             </form>
           )}
@@ -148,8 +144,8 @@ export default function Login() {
                 <label>Password <span className="hint">min 8 characters</span></label>
                 <input type="password" placeholder="Create a password" value={regPassword} onChange={e => setRegPassword(e.target.value)} autoComplete="new-password" />
               </div>
-              <button className="btn btn-primary btn-full" type="submit" disabled={loading}>
-                {loading && <span className="spinner" />}
+              <button className="fk-auth-btn fk-auth-btn-primary fk-auth-btn-full" type="submit" disabled={loading}>
+                {loading && <span className="fk-spinner" />}
                 {loading ? 'Please wait…' : 'Create Account'}
               </button>
             </form>
@@ -158,13 +154,12 @@ export default function Login() {
           {tab === 'forgot' && (
             <form onSubmit={forgotStep === 1 ? doForgotEmail : doForgotReset}>
               <div style={{ marginBottom: 18 }}>
-                <button type="button" onClick={() => forgotStep === 2 ? setForgotStep(1) : switchTab('login')} style={{ background: 'none', border: 'none', color: 'var(--blue)', fontSize: 13, cursor: 'pointer', padding: 0, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <button type="button" className="fk-auth-link" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+                  onClick={() => forgotStep === 2 ? setForgotStep(1) : switchTab('login')}>
                   ← {forgotStep === 2 ? 'Back' : 'Back to Sign In'}
                 </button>
-                <h3 style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>Reset your password</h3>
-                <p style={{ fontSize: 13, color: 'var(--muted)' }}>
-                  {forgotStep === 1 ? 'Enter your account email to continue.' : 'Choose a new password for your account.'}
-                </p>
+                <h3 className="fk-auth-h">Reset your password</h3>
+                <p className="fk-auth-p">{forgotStep === 1 ? 'Enter your account email to continue.' : 'Choose a new password for your account.'}</p>
               </div>
 
               {forgotStep === 1 && (
@@ -187,17 +182,14 @@ export default function Login() {
                 </>
               )}
 
-              <button className="btn btn-primary btn-full" type="submit" disabled={loading}>
-                {loading && <span className="spinner" />}
-                {forgotStep === 1
-                  ? (loading ? 'Checking…' : 'Continue')
-                  : (loading ? 'Saving…' : 'Update Password')}
+              <button className="fk-auth-btn fk-auth-btn-primary fk-auth-btn-full" type="submit" disabled={loading}>
+                {loading && <span className="fk-spinner" />}
+                {forgotStep === 1 ? (loading ? 'Checking…' : 'Continue') : (loading ? 'Saving…' : 'Update Password')}
               </button>
             </form>
           )}
-
         </div>
       </div>
-    </div>
+    </AuthShell>
   );
 }

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, getToken } from '../lib/api.js';
 import ModelPicker from '../lib/ModelPicker.jsx';
+import AuthShell from '../features/auth/AuthShell.jsx';
 
 const KNOWN_HOSTS = {
   'gmail.com':   { imap: 'imap.gmail.com',        smtp: 'smtp.gmail.com',      ip: 993, sp: 465 },
@@ -27,7 +28,7 @@ export default function Setup() {
       if (d.hasMail && d.hasLlm) navigate('/chat', { replace: true });
       else if (d.hasMail) setStep(2);
     });
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function setM(k, v) { setMail(m => ({ ...m, [k]: v })); }
   function setL(k, v) { setLlm(l => ({ ...l, [k]: v })); }
@@ -92,29 +93,29 @@ export default function Setup() {
   const modelPlaceholders = { claude: 'e.g. claude-sonnet-4-6', openai: 'e.g. gpt-4o', groq: 'e.g. llama-3.3-70b-versatile', perplexity: 'e.g. sonar-pro' };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '40px 16px 60px' }}>
-      <div style={{ textAlign: 'center', marginBottom: 28 }}>
-        <div className="page-logo" style={{ justifyContent: 'center' }}>
-          <img src="/flokilogo.PNG" alt="Floki" className="logo-img" />
-          <span className="logo-text">Floki Mail</span>
+    <AuthShell wide>
+      <div className="fk-auth-head">
+        <div className="fk-auth-logo">
+          <span className="fk-auth-logo-mark"><img src="/flokilogo.PNG" alt="Floki" /></span>
+          <span className="fk-auth-logo-text">Floki Mail</span>
         </div>
-        <p style={{ color: 'var(--muted)', fontSize: 14, marginTop: 6 }}>Let's connect your mailbox and AI provider</p>
+        <p className="fk-auth-tagline">Let's connect your mailbox and AI provider</p>
       </div>
 
-      <div className="card" style={{ width: '100%', maxWidth: 480 }}>
-        <div className="card-body">
-          <div className="steps">
-            <div className={`step ${step === 1 ? 'active' : 'done'}`}>
-              <div className="step-num">1</div>
-              <div className="step-label">Mail Server</div>
+      <div className="fk-auth-card">
+        <div className="fk-auth-card-body">
+          <div className="fk-steps">
+            <div className={`fk-step ${step === 1 ? 'active' : 'done'}`}>
+              <div className="fk-step-num">1</div>
+              <div className="fk-step-label">Mail Server</div>
             </div>
-            <div className={`step ${step === 2 ? 'active' : ''}`}>
-              <div className="step-num">2</div>
-              <div className="step-label">AI Provider</div>
+            <div className={`fk-step ${step === 2 ? 'active' : ''}`}>
+              <div className="fk-step-num">2</div>
+              <div className="fk-step-label">AI Provider</div>
             </div>
           </div>
 
-          {error && <div className="alert alert-error show">{error}</div>}
+          {error && <div className="fk-auth-alert fk-auth-alert-error">{error}</div>}
 
           {step === 1 && (
             <>
@@ -123,8 +124,8 @@ export default function Setup() {
                 <input type="text" placeholder="My Email" value={mail.label} onChange={e => setM('label', e.target.value)} />
               </div>
 
-              <div className="section-title">IMAP — Incoming mail</div>
-              <div className="row-2">
+              <div className="fk-section-title">IMAP — Incoming mail</div>
+              <div className="fk-auth-row-2">
                 <div className="field">
                   <label>Mail Server</label>
                   <input type="text" placeholder="mail.example.com" value={mail.imapHost} onChange={e => setM('imapHost', e.target.value)} onBlur={handleImapHostBlur} />
@@ -143,9 +144,9 @@ export default function Setup() {
                 <input type="password" placeholder="Your email password" value={mail.imapPass} onChange={e => setM('imapPass', e.target.value)} />
               </div>
 
-              <div className="divider" />
-              <div className="section-title">SMTP — Outgoing mail</div>
-              <div className="row-2">
+              <div className="fk-divider" />
+              <div className="fk-section-title">SMTP — Outgoing mail</div>
+              <div className="fk-auth-row-2">
                 <div className="field">
                   <label>SMTP Host <span className="hint">often same as IMAP</span></label>
                   <input type="text" placeholder="mail.example.com" value={mail.smtpHost} onChange={e => setM('smtpHost', e.target.value)} />
@@ -156,13 +157,13 @@ export default function Setup() {
                 </div>
               </div>
 
-              <div className="divider" />
-              <div className="optional-toggle" onClick={() => setShowOptional(o => !o)}>
+              <div className="fk-divider" />
+              <div className="fk-optional-toggle" onClick={() => setShowOptional(o => !o)}>
                 <span style={{ fontSize: 10, transition: 'transform 0.2s', transform: showOptional ? 'rotate(90deg)' : 'none', display: 'inline-block' }}>▶</span>
                 Roundcube contacts &amp; identities (optional)
               </div>
               {showOptional && (
-                <>
+                <div style={{ marginTop: 14 }}>
                   <div className="field">
                     <label>Roundcube URL</label>
                     <input type="url" placeholder="https://your-roundcube.com" value={mail.rcUrl} onChange={e => setM('rcUrl', e.target.value)} />
@@ -171,21 +172,21 @@ export default function Setup() {
                     <label>API Key</label>
                     <input type="text" placeholder="rcmcp_…" value={mail.rcKey} onChange={e => setM('rcKey', e.target.value)} />
                   </div>
-                </>
+                </div>
               )}
 
               {testResult && (
-                <div className={`alert ${testResult === 'ok' ? 'alert-success' : 'alert-error'} show`} style={{ marginBottom: 0, marginTop: 4 }}>
+                <div className={`fk-auth-alert ${testResult === 'ok' ? 'fk-auth-alert-success' : 'fk-auth-alert-error'}`} style={{ marginBottom: 4, marginTop: 4 }}>
                   {testResult === 'ok' ? '✓ Connection successful — your credentials work.' : `✗ Connection failed: ${testResult}`}
                 </div>
               )}
 
-              <div className="step-actions">
-                <button className="btn btn-secondary" style={{ flex: '0 0 auto' }} onClick={testConnection} disabled={loading}>
-                  {loading ? <><span className="spinner spinner-dark" /> Testing…</> : 'Test Connection'}
+              <div className="fk-step-actions">
+                <button className="fk-auth-btn fk-auth-btn-secondary" style={{ flex: '0 0 auto' }} onClick={testConnection} disabled={loading}>
+                  {loading ? <><span className="fk-spinner fk-spinner-dark" /> Testing…</> : 'Test Connection'}
                 </button>
-                <button className="btn btn-primary" onClick={saveMail} disabled={loading}>
-                  {loading ? <><span className="spinner" /> Saving…</> : 'Save & Continue'}
+                <button className="fk-auth-btn fk-auth-btn-primary" onClick={saveMail} disabled={loading}>
+                  {loading ? <><span className="fk-spinner" /> Saving…</> : 'Save & Continue'}
                 </button>
               </div>
             </>
@@ -193,17 +194,17 @@ export default function Setup() {
 
           {step === 2 && (
             <>
-              <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 20 }}>
+              <p className="fk-auth-p" style={{ marginBottom: 20 }}>
                 Choose your AI provider and paste your API key. Your key is encrypted before storage.
               </p>
-              <div className="provider-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+              <div className="fk-provider-grid">
                 {[
                   { id:'claude',     name:'Claude',      desc:'Anthropic · Best for long emails' },
                   { id:'openai',     name:'GPT-4o',      desc:'OpenAI · Fast & affordable' },
                   { id:'groq',       name:'Groq ⚡',     desc:'Groq · Ultra-fast LLaMA' },
                   { id:'perplexity', name:'Perplexity',  desc:'Search-augmented AI · All models' },
                 ].map(p => (
-                  <div key={p.id} className={`provider-card ${llm.provider === p.id ? 'selected' : ''}`} onClick={() => setL('provider', p.id)}>
+                  <div key={p.id} className={`fk-provider-card ${llm.provider === p.id ? 'selected' : ''}`} onClick={() => setL('provider', p.id)}>
                     <div className="name">{p.name}</div>
                     <div className="desc">{p.desc}</div>
                   </div>
@@ -222,16 +223,16 @@ export default function Setup() {
                 <ModelPicker provider={llm.provider} value={llm.model} onChange={v => setL('model', v)} />
                 <input type="text" placeholder={modelPlaceholders[llm.provider]} value={llm.model} onChange={e => setL('model', e.target.value)} style={{ marginTop: 8 }} />
               </div>
-              <div className="step-actions">
-                <button className="btn btn-secondary btn-sm" style={{ flex: '0 0 auto' }} onClick={() => { setStep(1); setError(''); }}>← Back</button>
-                <button className="btn btn-primary" onClick={saveLlm} disabled={loading}>
-                  {loading ? <><span className="spinner" /> Saving…</> : 'Finish Setup'}
+              <div className="fk-step-actions">
+                <button className="fk-auth-btn fk-auth-btn-secondary" style={{ flex: '0 0 auto' }} onClick={() => { setStep(1); setError(''); }}>← Back</button>
+                <button className="fk-auth-btn fk-auth-btn-primary" onClick={saveLlm} disabled={loading}>
+                  {loading ? <><span className="fk-spinner" /> Saving…</> : 'Finish Setup'}
                 </button>
               </div>
             </>
           )}
         </div>
       </div>
-    </div>
+    </AuthShell>
   );
 }

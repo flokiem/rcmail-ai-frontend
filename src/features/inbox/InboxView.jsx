@@ -18,6 +18,7 @@ export default function InboxView({ accounts = [], selectedBox = 'all', folder =
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [compose, setCompose] = useState(null);
   const [toast, setToast] = useState('');
+  const [aiAsk, setAiAsk] = useState(null); // { text, nonce } — a prompt to send to Floki about the open email
 
   useEffect(() => { setReading(null); }, [selectedBox, folder]);
 
@@ -28,6 +29,13 @@ export default function InboxView({ accounts = [], selectedBox = 'all', folder =
 
   function openCompose(init) { setCompose({ key: Date.now(), ...init }); }
   function showToast(msg) { setToast(msg); clearTimeout(showToast._t); showToast._t = setTimeout(() => setToast(''), 2600); }
+
+  // Hand a prompt to Floki about the currently-open email and surface the chat.
+  function askFloki(text) {
+    setChatCollapsed(false);
+    if (typeof window !== 'undefined' && window.innerWidth <= 860) setMobileChatOpen(true);
+    setAiAsk({ text, nonce: Date.now() });
+  }
 
   const composeFrom = () => reading?.accountId ?? defaultAccountId;
   const newMessage = () => openCompose({ mode: 'new', accountId: defaultAccountId });
@@ -68,6 +76,7 @@ export default function InboxView({ accounts = [], selectedBox = 'all', folder =
     <ReadingPane
       accountId={reading?.accountId} folder={reading?.folder} uid={reading?.uid} dotColor={reading?.dotColor}
       onClose={() => setReading(null)} onReply={replyTo} onForward={forward}
+      onReplyWithAI={() => askFloki('Draft a reply to this email.')}
     />
   );
 
@@ -120,6 +129,7 @@ export default function InboxView({ accounts = [], selectedBox = 'all', folder =
         selectedBox={selectedBox}
         agentName={agentName}
         activeEmail={activeEmail}
+        ask={aiAsk}
         collapsed={chatCollapsed}
         onToggleCollapse={() => { if (mobileChatOpen) setMobileChatOpen(false); else setChatCollapsed((c) => !c); }}
         onComposeDraft={(d) => { setMobileChatOpen(false); openCompose({ mode: 'new', accountId: d.accountId ?? defaultAccountId, to: d.to, cc: d.cc, subject: d.subject, body: d.body }); }}

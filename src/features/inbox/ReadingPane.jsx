@@ -4,8 +4,9 @@ import { getCachedMail, setCachedMail } from '../../lib/mailCache.js';
 import { emailSrcDoc, senderName, initialsFromName } from '../../lib/mailFormat.js';
 
 // Full single-email view (live read, keeps original HTML in a sandboxed iframe).
-// Reply/Forward are wired to the composer in Phase 4 (props are optional).
-export default function ReadingPane({ accountId, folder, uid, dotColor, onClose, onReply, onForward }) {
+// Reply/Forward open the composer; "Reply with AI" asks Floki to draft a reply
+// for this email (onReplyWithAI). All action props are optional.
+export default function ReadingPane({ accountId, folder, uid, dotColor, onClose, onReply, onForward, onReplyWithAI }) {
   const [detail, setDetail]   = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
@@ -97,6 +98,11 @@ export default function ReadingPane({ accountId, folder, uid, dotColor, onClose,
                 📎 {detail.attachments.length} attachment{detail.attachments.length > 1 ? 's' : ''}: {detail.attachments.map((a) => a.filename).join(', ')}
               </div>
             )}
+
+            <div className="fk-reading-actions">
+              <button className="fk-reading-act ai" onClick={() => onReplyWithAI?.(detail)}>↩ Reply with AI</button>
+              <button className="fk-reading-act" onClick={() => onForward?.(detail)}>↪ Forward</button>
+            </div>
           </>
         ) : null}
       </div>

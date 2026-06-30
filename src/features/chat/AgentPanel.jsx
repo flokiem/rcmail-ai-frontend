@@ -13,7 +13,7 @@ import AgentRail from './AgentRail.jsx';
 // conversation, and the composer. Threads bind to one account, or scope:'all'
 // for the unified "All boxes" chat. New chats use the default AI provider
 // (provider/model switching isn't surfaced in the v5 chat design).
-export default function AgentPanel({ accounts = [], llmProviders = [], selectedBox = 'all', agentName = 'Floki', activeEmail = null, collapsed = false, onToggleCollapse, onComposeDraft }) {
+export default function AgentPanel({ accounts = [], llmProviders = [], selectedBox = 'all', agentName = 'Floki', activeEmail = null, ask = null, collapsed = false, onToggleCollapse, onComposeDraft }) {
   const [threads, setThreads]   = useState([]);
   const [currentId, setCurrentId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -26,9 +26,19 @@ export default function AgentPanel({ accounts = [], llmProviders = [], selectedB
   const [pendingLlmId, setPendingLlmId] = useState(null); // provider/model chosen for the next new chat
   const [pendingModel, setPendingModel] = useState(null);
   const cancelRef = useRef(null);
+  const lastAskRef = useRef(null);
 
   // Re-attach context whenever a different email is opened.
   useEffect(() => { setContextOn(true); }, [activeEmail?.accountId, activeEmail?.uid]);
+
+  // A prompt handed up from the reading pane (e.g. "Reply with AI") — send it
+  // once per request (the open email rides along as context).
+  useEffect(() => {
+    if (ask?.nonce && ask.nonce !== lastAskRef.current) {
+      lastAskRef.current = ask.nonce;
+      send(ask.text);
+    }
+  }, [ask?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isAll = selectedBox === 'all';
   const defaultLlmId = llmProviders[0]?.id;

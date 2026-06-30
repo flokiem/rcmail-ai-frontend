@@ -19,9 +19,11 @@ export default function BoxFolders({ accountId, activeFolder, isActiveBox, onSel
     setFolders(cached ? decorateFolders(cached) : null);
     setError('');
     listFolders(accountId)
-      .then((raw) => { if (alive) { setFolders(decorateFolders(raw)); setCachedFolders(accountId, raw); } })
-      .catch((e) => { if (alive && !cached) setError(e.message); }) // keep showing cache on error
-      .finally(() => {});
+      .then((raw) => {
+        setCachedFolders(accountId, raw);               // always cache, even if the box was collapsed mid-fetch
+        if (alive) setFolders(decorateFolders(raw));
+      })
+      .catch((e) => { if (alive && !cached) setError(e.message); }); // keep showing cache on error
     return () => { alive = false; };
   }, [accountId]);
 

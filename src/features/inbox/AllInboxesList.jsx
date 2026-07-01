@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { listInboxEmails } from '../../lib/api.js';
+import { listInboxEmails, flagEmail, trashEmail } from '../../lib/api.js';
 import { getCachedList } from '../../lib/mailCache.js';
 import { acctColor } from '../../lib/accountColors.js';
 import MailRow from './MailRow.jsx';
@@ -13,7 +13,7 @@ const sortCap = (arr) => [...arr].sort((x, y) => new Date(y.date) - new Date(x.d
 // Unified inbox: there's no aggregate backend endpoint, so we fan out the
 // per-account INBOX list calls (Promise.allSettled), tag each message with its
 // mailbox, and merge by date. Cache-first for an instant first paint.
-export default function AllInboxesList({ accounts = [], onOpen }) {
+export default function AllInboxesList({ accounts = [], onOpen, onReply }) {
   const [emails, setEmails] = useState(() => {
     const all = [];
     accounts.forEach((a, i) => (getCachedList(a.id, 'INBOX') || []).forEach((m) => all.push(tagMsg(m, a, i))));
@@ -47,6 +47,22 @@ export default function AllInboxesList({ accounts = [], onOpen }) {
     return () => { clearInterval(id); window.removeEventListener('focus', onFocus); };
   }, [load]);
 
+  // Star toggle + Trash act on the message's own mailbox (merged INBOX view).
+  const same = (a, b) => a._accountId === b._accountId && a.uid === b.uid;
+  async function onStar(msg) {
+    const value = !msg.flagged;
+    const prev = emails;
+    setEmails(emails.map((e) => (same(e, msg) ? { ...e, flagged: value } : e)));
+    try { await flagEmail(msg._accountId, msg.uid, { folder: 'INBOX', flag: 'flagged', value }); }
+    catch { setEmails(prev); }
+  }
+  async function onTrash(msg) {
+    const prev = emails;
+    setEmails(emails.filter((e) => !same(e, msg)));
+    try { await trashEmail(msg._accountId, msg.uid, { folder: 'INBOX' }); }
+    catch { setEmails(prev); }
+  }
+
   const unreadN = emails.filter((e) => !e.seen).length;
   const filtered = emails.filter((m) => filter === 'all' ? true : filter === 'unread' ? !m.seen : m.flagged);
   const chips = [['all', 'All'], ['unread', 'Unread'], ['flagged', 'Flagged']];
@@ -75,7 +91,8 @@ export default function AllInboxesList({ accounts = [], onOpen }) {
         ) : (
           <>
             {filtered.map((m) => (
-              <MailRow key={`${m._accountId}:${m.uid}`} msg={m} dotColor={m._color} accountLabel={m._accountLabel} onOpen={onOpen} />
+              <MailRow key={`${m._accountId}:${m.uid}`} msg={m} dotColor={m._color} accountLabel={m._accountLabel}
+                onOpen={onOpen} onReply={onReply} onStar={onStar} onTrash={onTrash} />
             ))}
             <div className="fk-mail-end">That's everything across your mailboxes.</div>
           </>

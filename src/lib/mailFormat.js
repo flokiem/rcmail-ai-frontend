@@ -51,6 +51,17 @@ export function buildQuote(detail) {
   return `On ${when}, ${who} wrote:\n\n${body}`;
 }
 
+// Human-readable file size (used by attachment lists / chips).
+export function formatBytes(bytes) {
+  const n = Number(bytes);
+  if (!n || n < 0) return '';
+  if (n < 1024) return `${n} B`;
+  const units = ['KB', 'MB', 'GB'];
+  let v = n / 1024, i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+}
+
 export function initialsFromName(name) {
   const parts = String(name || '').split(/\s+/).filter(Boolean);
   const a = parts[0]?.[0] || '';
@@ -64,7 +75,8 @@ export function emailSrcDoc(html) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <base target="_blank">
 <style>
-  body { margin: 0; padding: 4px 2px; font-family: 'Hanken Grotesk', -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 14px; color: #1e293b; line-height: 1.6; word-wrap: break-word; overflow-wrap: break-word; }
+  html, body { margin: 0; }
+  body { padding: 4px 2px; font-family: 'Hanken Grotesk', -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 14px; color: #1e293b; line-height: 1.6; word-wrap: break-word; overflow-wrap: break-word; }
   img { max-width: 100%; height: auto; }
   a { color: #2563eb; }
   table { max-width: 100%; }

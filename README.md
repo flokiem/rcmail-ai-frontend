@@ -70,13 +70,13 @@ src/
     layout/
       AppShell.jsx             # themed frame, view router, shell state
       Sidebar.jsx              # brand, nav, accounts ("boxes"), footer
-      BoxFolders.jsx           # per-account IMAP folder rail
+      BoxFolders.jsx           # per-account folder rail (nested "Folders" group + unread counts)
     inbox/
       InboxView.jsx            # center column + agent panel orchestration
-      MailList.jsx, MailRow.jsx
+      MailList.jsx, MailRow.jsx  # list; row has Reply/Star/Trash hover actions
       AllInboxesList.jsx       # merged "All boxes" list (client fan-out)
-      ReadingPane.jsx          # single email (auto-sizing HTML iframe)
-      folderMeta.js            # special-use folder labels/icons/sorting
+      ReadingPane.jsx          # single email (auto-sizing iframe; Reply / Reply with AI / Forward; downloadable attachments)
+      folderMeta.js            # special-use labels/icons/sorting + groupFolders() nesting
     chat/
       AgentPanel.jsx           # Floki chat (threads, send via SSE)
       AgentRail.jsx            # collapsed 60px rail
@@ -84,7 +84,7 @@ src/
       ChatMessages.jsx         # bubbles, welcome state, tool indicator
       ChatComposer.jsx         # input + mic + send
       chatFormat.js            # tool labels + markdown-ish rendering
-    compose/Composer.jsx       # email composer + AI toolbar
+    compose/Composer.jsx       # email composer + AI toolbar + file attachments
     settings/
       SettingsView.jsx         # brand (local), theme picker, models panel
       ThemePicker.jsx
@@ -129,9 +129,12 @@ is **persisted to `localStorage`** (`floki.theme`, `floki.customAccent`,
 
 ## Features
 
-- **Inbox** per account, with an IMAP folder rail, All/Unread/Flagged filters,
-  and a reading pane that renders the original email HTML (auto-sized, sandboxed
-  iframe).
+- **Inbox** per account, with a nested IMAP folder rail (custom folders under a
+  collapsible "Folders" group + per-folder unread counts), All/Unread/Flagged
+  filters, per-row quick actions (Reply / Star / Trash — hover on desktop,
+  right→left swipe-to-reveal on mobile), and a reading pane that
+  renders the original email HTML (auto-sized, sandboxed iframe) with Reply,
+  Reply with AI, and Forward.
 - **All boxes** — a unified inbox merged client-side across every connected
   account (no aggregate backend endpoint exists, so the per-account lists are
   fanned out and merged).
@@ -156,8 +159,27 @@ settings (currently saved to `localStorage` only).
 
 ## Backend
 
-The backend (`../rcmail-ai`) is Node 20 + Express 4 + MySQL. Key endpoints this
-frontend uses: auth (`/api/auth/*`), accounts (`/api/accounts*`), providers
-(`/api/llm-providers*`), threads + SSE chat (`/api/threads*`), AI compose
-(`/api/ai/compose`), inbox list/read/folders (`/api/accounts/:id/emails*`,
-`/api/accounts/:id/folders`), and send (`/api/accounts/:id/send`).
+The backend (`../rcmail-ai`) is Node 20 + Express 4 + MySQL (file uploads via
+**multer** ^2.2.0, in-memory). Key endpoints this frontend uses: auth
+(`/api/auth/*`), accounts (`/api/accounts*`), providers (`/api/llm-providers*`),
+threads + SSE chat (`/api/threads*`), AI compose (`/api/ai/compose`), inbox
+list/read/folders with counts (`/api/accounts/:id/emails*`,
+`/api/accounts/:id/folders?counts=1`), download an attachment
+(`GET /api/accounts/:id/emails/:uid/attachments/:index`), star/trash a message
+(`PUT/DELETE /api/accounts/:id/emails/:uid[/flag]`), and send with optional file
+attachments (`POST /api/accounts/:id/send` — JSON, or multipart/form-data when
+files are attached).
+
+### Attachments
+
+- **Download** — `imap.readEmail` returns each attachment with a stable `index`
+  and a `related` flag (inline `cid:` images are flagged so the UI hides them).
+  `ReadingPane` lists the real attachments; clicking one calls
+  `downloadAttachment()` (`lib/api.js`), which fetches the bytes with the Bearer
+  header and triggers a browser save (a plain `<a href>` can't send the auth
+  header).
+- **Upload** — the `Composer` has a 📎 picker; files are held as `File[]` and
+  sent via `sendMail()` (`lib/api.js`) as `multipart/form-data`. The backend
+  (`multer` memory storage) maps them to nodemailer attachments; the Sent-folder
+  copy keeps them too. A **25 MB total** cap is enforced on both client and
+  server.

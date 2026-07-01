@@ -36,7 +36,7 @@ export default function AgentPanel({ accounts = [], llmProviders = [], selectedB
   useEffect(() => {
     if (ask?.nonce && ask.nonce !== lastAskRef.current) {
       lastAskRef.current = ask.nonce;
-      send(ask.text);
+      send(ask.text, { forceDraft: ask.forceDraft });
     }
   }, [ask?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -105,7 +105,7 @@ export default function AgentPanel({ accounts = [], llmProviders = [], selectedB
 
   function stop() { cancelRef.current?.(); setIsTyping(false); setSending(false); }
 
-  async function send(text) {
+  async function send(text, opts = {}) {
     const t = (text ?? input).trim();
     if (!t || sending) return;
     if (!activeLlmId) { setMessages((m) => [...m, { role: 'assistant', content: '⚠️ Add an AI provider in Settings first.' }]); return; }
@@ -134,6 +134,7 @@ export default function AgentPanel({ accounts = [], llmProviders = [], selectedB
     const ctx = (activeEmail && contextOn) ? activeEmail : undefined;
     cancelRef.current = streamChat(id, t, {
       context: ctx,
+      forceDraft: !!opts.forceDraft && !!ctx, // guarantee the composer opens for "Reply with AI" / reply chip
       onTool: (name) => setTypingTool(toolLabel(name)),
       onComposeDraft: (d) => onComposeDraft?.(d),
       onDone: ({ reply, title }) => {
@@ -199,8 +200,8 @@ export default function AgentPanel({ accounts = [], llmProviders = [], selectedB
             <button className="fk-chat-context-x" title="Detach" onClick={() => setContextOn(false)}>×</button>
           </div>
           <div className="fk-chat-context-chips">
-            {[['Summarize', 'Summarize this email.'], ['Draft a reply', 'Draft a reply to this email.'], ['Who sent this?', 'Who sent this email and what do they want?']].map(([label, q]) => (
-              <button key={label} className="fk-chat-context-chip" onClick={() => send(q)} disabled={sending}>{label}</button>
+            {[['Summarize', 'Summarize this email.', false], ['Draft a reply', 'Draft a reply to this email.', true], ['Who sent this?', 'Who sent this email and what do they want?', false]].map(([label, q, force]) => (
+              <button key={label} className="fk-chat-context-chip" onClick={() => send(q, { forceDraft: force })} disabled={sending}>{label}</button>
             ))}
           </div>
         </div>

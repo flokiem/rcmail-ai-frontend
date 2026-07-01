@@ -258,11 +258,21 @@ body { margin: 0; font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-
 .fk-folder { display: flex; align-items: center; gap: 10px; padding: 6px 12px 6px 31px; border-radius: 7px; cursor: pointer; border: none; background: transparent; font-family: inherit; width: 100%; text-align: left; }
 .fk-folder:hover { background: var(--rail-hover); }
 .fk-folder.active { background: var(--rail-hover); }
-.fk-folder-ico { width: 15px; display: flex; align-items: center; justify-content: center; flex: none; font-size: 12px; color: var(--faint); }
+.fk-folder-ico { width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; flex: none; color: var(--faint); }
+.fk-folder-ico svg { display: block; }
 .fk-folder.active .fk-folder-ico { color: var(--accent); }
 .fk-folder-name { font-size: 12.5px; font-weight: 500; color: var(--text2); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fk-folder.active .fk-folder-name { font-weight: 600; color: var(--heading); }
 .fk-folder-note { font-size: 11.5px; color: var(--faint); padding: 6px 12px 6px 31px; }
+/* count badge (per-folder unread + the "Folders (N)" group total) */
+.fk-folder-count { flex: none; font-family: var(--mono); font-size: 10.5px; font-weight: 600; color: var(--faint); min-width: 16px; text-align: right; }
+.fk-folder.active .fk-folder-count { color: var(--accent); }
+/* collapsible custom-folder group */
+.fk-folder-group { display: flex; flex-direction: column; gap: 1px; }
+.fk-folder-chev { flex: none; margin-left: 4px; color: var(--faint); font-size: 13px; line-height: 1; display: inline-flex; transition: transform .18s ease; }
+.fk-folder-chev.open { transform: rotate(90deg); }
+.fk-folder-children { display: flex; flex-direction: column; gap: 1px; animation: flokiViewIn .16s ease both; }
+.fk-folder-children .fk-folder { padding-left: 44px; }
 
 /* ---- Inbox view ---- */
 .fk-inbox { background: var(--center); }
@@ -272,7 +282,7 @@ body { margin: 0; font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-
 .fk-inbox-iconbtn:disabled { opacity: .5; cursor: default; }
 .fk-inbox-iconbtn.primary { background: var(--ink); color: var(--on-ink); border: none; }
 .fk-inbox-iconbtn.primary:hover { background: var(--ink-hover); }
-.fk-inbox-head { padding: 12px 28px; border-bottom: 1px solid var(--line); flex: none; }
+.fk-inbox-head { height: 64px; padding: 0 28px; border-bottom: 1px solid var(--line); flex: none; display: flex; flex-direction: column; justify-content: center; }
 .fk-inbox-titlewrap { display: flex; align-items: center; gap: 10px; }
 .fk-inbox-titlewrap h1 { font-size: 20px; font-weight: 700; letter-spacing: -.02em; color: var(--heading); margin: 0; white-space: nowrap; }
 .fk-inbox-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
@@ -282,7 +292,8 @@ body { margin: 0; font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-
    reading pane beside it (the list stays visible). */
 .fk-inbox-body { flex: 1; display: flex; min-height: 0; }
 .fk-inbox-listcol { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
-.fk-inbox-listcol.narrow { flex: 0 0 320px; border-right: 1px solid var(--line); }
+.fk-inbox-listcol.narrow { flex: 0 0 320px; border-right: 1px solid var(--line); }        /* email open + chat open */
+.fk-inbox-listcol.reading-wide { flex: 0 0 440px; border-right: 1px solid var(--line); }   /* email open + chat collapsed — list stays wide, matches the design */
 
 .fk-maillist { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .fk-mail-filterbar { display: flex; align-items: center; gap: 8px; padding: 13px 18px; border-bottom: 1px solid var(--line); flex: none; }
@@ -291,9 +302,12 @@ body { margin: 0; font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-
 .fk-mail-filter.active { background: var(--card); color: var(--heading); box-shadow: 0 1px 2px rgba(27,33,48,.06); }
 .fk-mail-scroll { flex: 1; overflow-y: auto; }
 
-.fk-mail-row { display: flex; gap: 13px; align-items: flex-start; width: 100%; padding: 11px 18px; border: none; border-bottom: 1px solid var(--line); background: transparent; cursor: pointer; font-family: inherit; text-align: left; }
+.fk-mail-row { position: relative; display: flex; gap: 13px; align-items: flex-start; width: 100%; padding: 0; border: none; border-bottom: 1px solid var(--line); background: transparent; cursor: pointer; font-family: inherit; text-align: left; }
 .fk-mail-row:hover { background: var(--panel); }
 .fk-mail-row.unread { background: var(--card); }
+.fk-mail-row.unread:hover { background: var(--panel); } /* so the hover-action pill blends on unread rows too */
+/* the padding lives on the slide (not the row) so the slide fully covers the swipe tray on mobile */
+.fk-mail-slide { flex: 1; min-width: 0; display: flex; gap: 13px; align-items: flex-start; padding: 11px 18px; }
 .fk-mail-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; margin-top: 6px; }
 .fk-mail-main { flex: 1; min-width: 0; }
 .fk-mail-top { display: flex; align-items: center; gap: 10px; }
@@ -305,6 +319,25 @@ body { margin: 0; font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-
 .fk-mail-row.unread .fk-mail-time { color: var(--text2); }
 .fk-mail-sub { display: block; font-size: 13.5px; margin-top: 2px; color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fk-mail-row.unread .fk-mail-sub { color: var(--heading); font-weight: 600; }
+/* hover quick-actions (Reply / Star / Trash) — revealed on the right, no layout shift */
+.fk-mail-actions { position: absolute; top: 50%; right: 12px; transform: translateY(-50%); display: none; align-items: center; gap: 2px; padding-left: 10px; border-radius: 9px; background: var(--panel); }
+.fk-mail-row:hover .fk-mail-actions { display: flex; }
+.fk-mail-act { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--muted); border-radius: 7px; cursor: pointer; }
+.fk-mail-act:hover { background: var(--soft); color: var(--heading); }
+.fk-mail-act.on { color: var(--accent2); }
+.fk-mail-act.danger:hover { background: color-mix(in srgb, #d9534f 16%, transparent); color: #d9534f; }
+.fk-mail-act:disabled { opacity: .5; cursor: default; }
+/* touch screens have no hover — reveal the actions with a rightward swipe (see MailRow) */
+@media (max-width: 860px) {
+  .fk-mail-row { overflow: hidden; }
+  /* tray pinned to the right, sitting *behind* the sliding content */
+  .fk-mail-actions { position: absolute; right: 0; left: auto; top: 0; bottom: 0; transform: none; display: flex; align-items: center; gap: 2px; padding: 0 14px; background: transparent; border-radius: 0; }
+  /* opaque slide covers the tray until dragged; --swipe-x is written by the gesture, defaults closed.
+     the edge shadow separates the content from the revealed buttons (visible once slid open) */
+  .fk-mail-slide { position: relative; z-index: 1; background: var(--center); transform: translateX(var(--swipe-x, 0px)); transition: transform .2s ease; box-shadow: 6px 0 12px -6px rgba(27, 33, 48, .22); }
+  .fk-mail-row.unread .fk-mail-slide { background: var(--card); }
+  .fk-mail-row.dragging .fk-mail-slide { transition: none; will-change: transform; }
+}
 .fk-mail-empty { text-align: center; font-size: 13px; color: var(--faint); padding: 48px 20px; }
 .fk-mail-error { margin: 16px 18px; padding: 11px 14px; background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 8px; font-size: 13px; }
 .fk-mail-end { text-align: center; font-size: 11.5px; color: var(--faint); padding: 22px 20px 36px; }
@@ -322,6 +355,8 @@ body { margin: 0; font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-
 .fk-reading-act.ai:hover { background: var(--accent-hover); }
 .fk-reading-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
 .fk-reading-body { flex: 1; overflow-y: auto; padding: 26px 30px 64px; }
+/* centre the message column so a wide reading pane (chat collapsed) doesn't leave a big empty gap on the right */
+.fk-reading-inner { max-width: 780px; margin: 0 auto; }
 .fk-reading-subject { font-size: 22px; font-weight: 700; color: var(--heading); letter-spacing: -.01em; max-width: 720px; }
 .fk-reading-meta { display: flex; align-items: center; gap: 13px; margin-top: 18px; }
 .fk-reading-avatar { width: 42px; height: 42px; border-radius: 50%; flex: none; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600; border: 1px solid var(--av-line); }
@@ -330,9 +365,29 @@ body { margin: 0; font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-
 .fk-reading-addr { font-size: 11.5px; color: var(--faint); font-weight: 400; }
 .fk-reading-to { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
 .fk-reading-content { margin-top: 24px; max-width: 760px; }
-.fk-reading-iframe { width: 100%; height: 320px; border: none; background: #fff; border-radius: 8px; display: block; }
+.fk-reading-iframe { width: 100%; height: 200px; border: none; background: #fff; border-radius: 8px; display: block; }
 .fk-reading-text { font-size: 14.5px; line-height: 1.7; color: var(--text); white-space: pre-wrap; max-width: 680px; }
-.fk-reading-attach { display: inline-flex; align-items: center; gap: 9px; margin-top: 24px; background: var(--card); border: 1px solid var(--line); border-radius: 9px; padding: 11px 15px; font-size: 12.5px; color: var(--text); }
+.fk-reading-attach { margin-top: 24px; }
+.fk-reading-attach-head { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 9px; }
+.fk-reading-attach-list { display: flex; flex-wrap: wrap; gap: 10px; }
+.fk-reading-attach-item { display: inline-flex; align-items: center; gap: 10px; max-width: 320px; text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: 9px; padding: 9px 12px; font-family: inherit; cursor: pointer; color: var(--text); }
+.fk-reading-attach-item:hover:not(:disabled) { border-color: var(--accent-line); background: var(--soft); }
+.fk-reading-attach-item:disabled { opacity: .55; cursor: default; }
+.fk-reading-attach-ico { font-size: 16px; flex: none; }
+.fk-reading-attach-info { display: flex; flex-direction: column; min-width: 0; }
+.fk-reading-attach-name { font-size: 12.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fk-reading-attach-size { font-size: 11px; color: var(--faint); }
+.fk-reading-attach-dl { margin-left: auto; font-size: 15px; color: var(--accent); flex: none; }
+
+/* Compose attachment chips */
+.fk-cmp-attach { flex: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 0 22px 14px; }
+.fk-cmp-attach-chip { display: inline-flex; align-items: center; gap: 7px; max-width: 260px; background: var(--soft); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; font-size: 12px; color: var(--text); }
+.fk-cmp-attach-ico { font-size: 13px; flex: none; }
+.fk-cmp-attach-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fk-cmp-attach-size { color: var(--faint); font-size: 11px; flex: none; }
+.fk-cmp-attach-rm { border: none; background: transparent; color: var(--text2); cursor: pointer; font-family: inherit; font-size: 15px; line-height: 1; padding: 0 2px; flex: none; }
+.fk-cmp-attach-rm:hover:not(:disabled) { color: var(--accent); }
+.fk-cmp-attach-rm:disabled { opacity: .5; cursor: default; }
 
 /* ---- Floki chat panel ---- */
 .fk-chat-panel { position: relative; width: 392px; flex: none; background: var(--card); border-left: 1px solid var(--line); display: flex; flex-direction: column; overflow: hidden; }
@@ -577,7 +632,7 @@ body { margin: 0; font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-
   .fk-view-head, .fk-settings-scroll, .fk-auto-scroll, .fk-auto-head, .fk-inbox-head { padding-left: 16px; padding-right: 16px; }
   .fk-reading-body { padding-left: 18px; padding-right: 18px; }
   .fk-reading-head { padding-left: 16px; padding-right: 16px; }
-  .fk-inbox-listcol.narrow { display: none; } /* reading takes full width on mobile */
+  .fk-inbox-listcol.narrow, .fk-inbox-listcol.reading-wide { display: none; } /* reading takes full width on mobile */
   .fk-stat-row { flex-wrap: wrap; }
   .fk-stat { min-width: 120px; }
 
@@ -592,4 +647,6 @@ body { margin: 0; font-family: 'Hanken Grotesk', system-ui, -apple-system, sans-
   .fk-modal { max-height: 92vh; border-radius: 14px 14px 0 0; }
   .fk-cmp { right: 8px; left: 8px; bottom: 8px; width: auto; max-width: none; height: 70vh; }
   .fk-ms-providers { grid-template-columns: 1fr; }
+  .fk-reading-attach-item, .fk-reading-attach-list { max-width: none; width: 100%; }
+  .fk-cmp-attach-chip { max-width: 100%; }
 }

@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
-import { api, aiCompose } from '../../lib/api.js';
+import React, { useState, useRef } from 'react';
+import { sendMail, aiCompose } from '../../lib/api.js';
 import { acctColor } from '../../lib/accountColors.js';
+import { formatBytes } from '../../lib/mailFormat.js';
 import { ComingSoonBadge } from '../common/ComingSoon.jsx';
+
+const ATTACH_MAX_BYTES = 25 * 1024 * 1024; // 25 MB total (matches the server guard)
 
 const TONES = ['Professional', 'Friendly', 'Formal', 'Casual', 'Confident', 'Empathetic'];
 const LANGS = ['Spanish', 'French', 'German', 'Italian', 'Portuguese', 'Dutch', 'Japanese', 'Chinese', 'Korean', 'Arabic'];
@@ -31,9 +34,28 @@ export default function Composer({ initial = {}, accounts = [], llmProviders = [
   const [aiBusy, setAiBusy]   = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError]     = useState('');
+  const [attachments, setAttachments] = useState([]); // File[]
+  const fileInputRef = useRef(null);
 
   const llmId = llmProviders[0]?.id;
   const fromAcct = accounts.find((a) => String(a.id) === String(from));
+
+  function addFiles(fileList) {
+    const picked = Array.from(fileList || []);
+    if (!picked.length) return;
+    const next = [...attachments, ...picked];
+    const total = next.reduce((n, f) => n + f.size, 0);
+    if (total > ATTACH_MAX_BYTES) {
+      setError(`Attachments exceed the ${formatBytes(ATTACH_MAX_BYTES)} total limit.`);
+      return;
+    }
+    setError('');
+    setAttachments(next);
+  }
+
+  function removeFile(i) {
+    setAttachments((list) => list.filter((_, idx) => idx !== i));
+  }
 
   async function runAi(action, { instruction } = {}) {
     if (aiBusy) return;
@@ -74,11 +96,9 @@ export default function Composer({ initial = {}, accounts = [], llmProviders = [
     if (!finalBody.trim()) { setError('Write a message first.'); return; }
     setSending(true); setError(''); setMenu(null);
     try {
-      const r = await api.post(`/api/accounts/${from}/send`, { to, cc: cc || undefined, subject, body: finalBody });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) { setError(d.error ?? 'Failed to send.'); return; }
+      await sendMail(from, { to, cc: cc || undefined, subject, body: finalBody }, attachments);
       onSent?.(fromAcct?.label || 'your mailbox');
-    } catch { setError('Network error. Please try again.'); }
+    } catch (e) { setError(e.message || 'Network error. Please try again.'); }
     finally { setSending(false); }
   }
 
@@ -204,6 +224,27 @@ export default function Composer({ initial = {}, accounts = [], llmProviders = [
         </div>
       )}
 
+      {attachments.length > 0 && (
+        <div className="fk-cmp-attach">
+          {attachments.map((f, i) => (
+            <span key={`${f.name}-${i}`} className="fk-cmp-attach-chip" title={f.name}>
+              <span className="fk-cmp-attach-ico">📎</span>
+              <span className="fk-cmp-attach-name">{f.name}</span>
+              <span className="fk-cmp-attach-size">{formatBytes(f.size)}</span>
+              <button className="fk-cmp-attach-rm" onClick={() => removeFile(i)} title="Remove" disabled={sending}>×</button>
+            </span>
+          ))}
+        </div>
+      )}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        style={{ display: 'none' }}
+        onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }}
+      />
+
       <div className="fk-cmp-foot">
         <div className="fk-cmp-sendwrap">
           <button className="fk-cmp-send" onClick={send} disabled={sending}>{sending ? 'Sending…' : 'Send ➤'}</button>
@@ -216,6 +257,7 @@ export default function Composer({ initial = {}, accounts = [], llmProviders = [
           )}
         </div>
         <span className="fk-spacer" />
+        <button className="fk-cmp-footbtn" title="Attach files" onClick={() => fileInputRef.current?.click()} disabled={sending}>📎</button>
         <button className="fk-cmp-footbtn" title="Save draft — coming soon" disabled>🖫</button>
         <button className="fk-cmp-footbtn" title="Discard" onClick={onClose}>🗑</button>
       </div>

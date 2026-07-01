@@ -45,12 +45,76 @@ export async function readInboxEmail(accountId, uid, folder = 'INBOX') {
   return d;
 }
 
-// Live IMAP folder list for an account: [{ path, name, flags[], specialUse }]
+// Download one email attachment by its index (see readEmail's attachments[].index).
+// Auth is a Bearer header, so we can't just navigate to the URL — fetch the bytes
+// as a blob and trigger a client-side save.
+export async function downloadAttachment(accountId, uid, index, { folder = 'INBOX', filename = 'attachment' } = {}) {
+  const qs = new URLSearchParams({ folder });
+  const r = await fetch(`${BASE}/api/accounts/${accountId}/emails/${uid}/attachments/${index}?${qs}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(d.error ?? 'Failed to download attachment.');
+  }
+  const blob = await r.blob();
+  const url  = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+// Live IMAP folder list for an account: [{ path, name, flags[], specialUse, unread, total }]
+// (?counts=1 adds per-folder unread/total for the rail badges).
 export async function listFolders(accountId) {
-  const r = await req(`/api/accounts/${accountId}/folders`);
+  const r = await req(`/api/accounts/${accountId}/folders?counts=1`);
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error ?? 'Failed to load folders.');
   return d.folders ?? [];
+}
+
+// Toggle a flag (star = 'flagged', or 'seen') on a single email.
+export async function flagEmail(accountId, uid, { folder = 'INBOX', flag = 'flagged', value = true } = {}) {
+  const r = await req(`/api/accounts/${accountId}/emails/${uid}/flag`, { method: 'PUT', body: { folder, flag, value } });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error ?? 'Failed to update the email.');
+  return d;
+}
+
+// Move a single email to Trash (or delete if the account has no Trash folder).
+export async function trashEmail(accountId, uid, { folder = 'INBOX' } = {}) {
+  const qs = new URLSearchParams({ folder });
+  const r = await req(`/api/accounts/${accountId}/emails/${uid}?${qs}`, { method: 'DELETE' });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error ?? 'Failed to trash the email.');
+  return d;
+}
+
+// Send an email from an account. With files it uploads as multipart/form-data
+// (browser sets the multipart boundary, so we must NOT set Content-Type); with
+// no files it posts JSON (unchanged path). fields = { to, cc, subject, body, … }.
+export async function sendMail(accountId, fields, files = []) {
+  let r;
+  if (files.length) {
+    const fd = new FormData();
+    for (const [k, v] of Object.entries(fields)) {
+      if (v !== undefined && v !== null && v !== '') fd.append(k, v);
+    }
+    for (const f of files) fd.append('attachments', f, f.name);
+    r = await fetch(`${BASE}/api/accounts/${accountId}/send`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getToken()}` },
+      body: fd,
+    });
+  } else {
+    r = await req(`/api/accounts/${accountId}/send`, { method: 'POST', body: fields });
+  }
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error ?? 'Failed to send.');
+  return d;
 }
 
 // AI composer assist: action = 'write' | 'proofread' | 'expand' | 'shorten'
@@ -61,13 +125,13 @@ export async function aiCompose({ llmId, action, text, instruction, tone, model 
   return d.text ?? '';
 }
 
-export function streamChat(threadId, message, { onTool, onDone, onError, onComposeDraft, context } = {}) {
+export function streamChat(threadId, message, { onTool, onDone, onError, onComposeDraft, context, forceDraft } = {}) {
   const ctrl = new AbortController();
 
   fetch(`${BASE}/api/threads/${threadId}/chat`, {
     method: 'POST',
     headers: authHeaders(),
-    body: JSON.stringify({ message, ...(context ? { context } : {}) }),
+    body: JSON.stringify({ message, ...(context ? { context } : {}), ...(forceDraft ? { forceDraft: true } : {}) }),
     signal: ctrl.signal,
   }).then(async (res) => {
     if (!res.ok) {

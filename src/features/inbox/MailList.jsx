@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { listInboxEmails } from '../../lib/api.js';
+import { listInboxEmails, flagEmail, trashEmail } from '../../lib/api.js';
 import { getCachedList, setCachedList } from '../../lib/mailCache.js';
 import MailRow from './MailRow.jsx';
 
@@ -7,7 +7,7 @@ const REFRESH_MS = 40000;
 
 // Cache-first mail list for one (account, folder): instant from localStorage,
 // then refreshes from the backend; polls every 40s and on window focus.
-export default function MailList({ accountId, folder, dotColor, onOpen }) {
+export default function MailList({ accountId, folder, dotColor, onOpen, onReply }) {
   const [emails, setEmails]         = useState([]);
   const [loading, setLoading]       = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -44,6 +44,22 @@ export default function MailList({ accountId, folder, dotColor, onOpen }) {
     return () => { clearInterval(interval); window.removeEventListener('focus', onFocus); };
   }, [load]);
 
+  // Star toggle + Trash — optimistic (update list + cache immediately), revert on failure.
+  const commit = (next) => { setEmails(next); setCachedList(accountId, folder, next); };
+  async function onStar(msg) {
+    const value = !msg.flagged;
+    const prev = emails;
+    commit(emails.map((e) => (e.uid === msg.uid ? { ...e, flagged: value } : e)));
+    try { await flagEmail(accountId, msg.uid, { folder, flag: 'flagged', value }); }
+    catch { commit(prev); }
+  }
+  async function onTrash(msg) {
+    const prev = emails;
+    commit(emails.filter((e) => e.uid !== msg.uid));
+    try { await trashEmail(accountId, msg.uid, { folder }); }
+    catch { commit(prev); }
+  }
+
   const unreadN = emails.filter((e) => !e.seen).length;
   const filtered = emails.filter((m) => filter === 'all' ? true : filter === 'unread' ? !m.seen : m.flagged);
 
@@ -72,7 +88,10 @@ export default function MailList({ accountId, folder, dotColor, onOpen }) {
           <div className="fk-mail-empty">Nothing here right now.</div>
         ) : (
           <>
-            {filtered.map((m) => <MailRow key={m.uid} msg={m} dotColor={dotColor} onOpen={onOpen} />)}
+            {filtered.map((m) => (
+              <MailRow key={m.uid} msg={m} dotColor={dotColor} onOpen={onOpen}
+                onReply={onReply} onStar={onStar} onTrash={onTrash} />
+            ))}
             <div className="fk-mail-end">That's everything in this folder.</div>
           </>
         )}

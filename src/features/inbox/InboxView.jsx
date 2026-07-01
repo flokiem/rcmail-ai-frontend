@@ -7,6 +7,7 @@ import Composer from '../compose/Composer.jsx';
 import { colorForAccount } from '../../lib/accountColors.js';
 import { folderLabel } from './folderMeta.js';
 import { addressOf, buildQuote } from '../../lib/mailFormat.js';
+import { readInboxEmail } from '../../lib/api.js';
 
 // Inbox layout: center column (list + reading pane side-by-side) + the Floki
 // agent panel on the right. Opening a message keeps the list visible (it just
@@ -31,10 +32,10 @@ export default function InboxView({ accounts = [], selectedBox = 'all', folder =
   function showToast(msg) { setToast(msg); clearTimeout(showToast._t); showToast._t = setTimeout(() => setToast(''), 2600); }
 
   // Hand a prompt to Floki about the currently-open email and surface the chat.
-  function askFloki(text) {
+  function askFloki(text, opts = {}) {
     setChatCollapsed(false);
     if (typeof window !== 'undefined' && window.innerWidth <= 860) setMobileChatOpen(true);
-    setAiAsk({ text, nonce: Date.now() });
+    setAiAsk({ text, nonce: Date.now(), forceDraft: !!opts.forceDraft });
   }
 
   const composeFrom = () => reading?.accountId ?? defaultAccountId;
@@ -49,6 +50,20 @@ export default function InboxView({ accounts = [], selectedBox = 'all', folder =
     subject: /^fwd:/i.test(detail.subject || '') ? detail.subject : `Fwd: ${detail.subject || ''}`,
     quoted: buildQuote(detail),
   });
+
+  // Reply straight from a list row (no reading pane open): fetch the email for a
+  // proper quote, and always send from that message's own mailbox.
+  async function replyFromRow(accountId, msg, fld = 'INBOX') {
+    let detail = null;
+    try { detail = await readInboxEmail(accountId, msg.uid, fld); } catch { /* fall back to row headers */ }
+    const src = detail || msg;
+    openCompose({
+      mode: 'reply', accountId,
+      to: addressOf(src.from),
+      subject: /^re:/i.test(src.subject || '') ? src.subject : `Re: ${src.subject || ''}`,
+      quoted: detail ? buildQuote(detail) : '',
+    });
+  }
 
   // The email currently open in the reading pane, in the shape the chat sends as
   // `context` so the AI answers about it.
@@ -65,7 +80,9 @@ export default function InboxView({ accounts = [], selectedBox = 'all', folder =
         <h1>{title}</h1>
         {chip && <span className="fk-chip">{chip}</span>}
         <span className="fk-spacer" />
-        <button className="fk-inbox-iconbtn" title="Search — coming soon" disabled>⌕</button>
+        <button className="fk-inbox-iconbtn" title="Search — coming soon" disabled aria-label="Search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
+        </button>
         <button className="fk-inbox-iconbtn primary" title="Compose" onClick={newMessage}>✎</button>
       </div>
       {sub && <div className="fk-inbox-sub">{sub}</div>}
@@ -76,7 +93,7 @@ export default function InboxView({ accounts = [], selectedBox = 'all', folder =
     <ReadingPane
       accountId={reading?.accountId} folder={reading?.folder} uid={reading?.uid} dotColor={reading?.dotColor}
       onClose={() => setReading(null)} onReply={replyTo} onForward={forward}
-      onReplyWithAI={() => askFloki('Draft a reply to this email.')}
+      onReplyWithAI={() => askFloki('Draft a reply to this email.', { forceDraft: true })}
     />
   );
 
@@ -84,11 +101,13 @@ export default function InboxView({ accounts = [], selectedBox = 'all', folder =
     <AllInboxesList
       accounts={accounts}
       onOpen={(m) => setReading({ accountId: m._accountId, uid: m.uid, folder: 'INBOX', dotColor: m._color, from: m.from, subject: m.subject, date: m.date })}
+      onReply={(m) => replyFromRow(m._accountId, m, 'INBOX')}
     />
   ) : (
     <MailList
       accountId={account?.id} folder={folder} dotColor={dotColor}
       onOpen={(m) => setReading({ accountId: account.id, uid: m.uid, folder, dotColor, from: m.from, subject: m.subject, date: m.date })}
+      onReply={(m) => replyFromRow(account.id, m, folder)}
     />
   );
 
@@ -107,7 +126,7 @@ export default function InboxView({ accounts = [], selectedBox = 'all', folder =
           </div>
         ) : (
           <div className="fk-inbox-body">
-            <div className={`fk-inbox-listcol ${reading ? 'narrow' : ''}`}>{listColumn}</div>
+            <div className={`fk-inbox-listcol ${reading ? (chatCollapsed ? 'reading-wide' : 'narrow') : ''}`}>{listColumn}</div>
             {reading && readingPane}
           </div>
         )}
